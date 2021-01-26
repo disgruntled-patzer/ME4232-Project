@@ -1,4 +1,4 @@
-# ME4232 Workdpsace
+# ME4232 Workspace
 
 ROS Workspace to contain packages for ME4232 Project
 
