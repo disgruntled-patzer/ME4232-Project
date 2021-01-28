@@ -16,7 +16,7 @@ int main(int argc, char **argv){
     // Anon is needed since multiple UAV nodes will be created
     ros::init(argc, argv, "uav", ros::init_options::AnonymousName);
     ros::NodeHandle n;
-    ros::Publisher odo_pub = n.advertise<nav_msgs::Odometry>("uav/odometry", 100);
+    ros::Publisher odo_pub = n.advertise<nav_msgs::Odometry>("uav/odom", 100);
     ros::Rate loop_rate = 10;
 
     while (ros::ok()){
