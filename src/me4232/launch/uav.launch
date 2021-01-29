@@ -1,0 +1,8 @@
+<launch>
+    
+    <node name="uav" pkg="me4232" type="uav" respawn="true" respawn_delay="3" output="screen" />
+        <param name="uav_id" type="string" value="1" />
+        <param name="child_frame_id" value="gcs" />
+    <!-- </node> -->
+
+</launch>

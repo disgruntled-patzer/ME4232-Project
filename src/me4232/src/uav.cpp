@@ -11,7 +11,8 @@ Copyright (C) 2021, Lau Yan Han and Niu Xinyuan, National University of Singapor
 */
 
 #include <ros/ros.h>
-#include <tf/transform_broadcaster.h>
+#include <tf2/LinearMath/Quaternion.h>
+#include <tf2_ros/transform_broadcaster.h>
 #include <nav_msgs/Odometry.h>
 
 int main(int argc, char **argv){
@@ -21,7 +22,7 @@ int main(int argc, char **argv){
     ros::NodeHandle n;
     ros::Publisher odom_pub = n.advertise<nav_msgs::Odometry>("uav/odom", 100);
     ros::Rate loop_rate = 1;
-    tf::TransformBroadcaster odom_broadcaster;
+    tf2_ros::TransformBroadcaster odom_broadcaster;
 
     // xy + angular (th) pos and vel. Units: m/s and rad/s
     double x = 0.0;
@@ -47,32 +48,40 @@ int main(int argc, char **argv){
 		th += delta_th;
 
         // Since all odometry is 6DOF we'll need a quaternion created from yaw
-		geometry_msgs::Quaternion odom_quat = tf::createQuaternionMsgFromYaw(th);
+		//geometry_msgs::Quaternion odom_quat = tf2_ros::createQuaternionMsgFromYaw(th);
+        tf2::Quaternion odom_quat;
+        odom_quat.setRPY(0,0,th);
 
         // Publish the transform over tf
 		geometry_msgs::TransformStamped odom_trans;
 		odom_trans.header.stamp = current_time;
-		odom_trans.header.frame_id = "1"; // To be replaced with rosparam
-		odom_trans.child_frame_id = "gcs";
+        n.getParam("uav_id", odom_trans.header.frame_id);
+        n.getParam("child_frame_id", odom_trans.child_frame_id);
         odom_trans.transform.translation.x = x;
 		odom_trans.transform.translation.y = y;
 		odom_trans.transform.translation.z = 0.0;
-		odom_trans.transform.rotation = odom_quat;
+		odom_trans.transform.rotation.x = odom_quat.x();
+		odom_trans.transform.rotation.y = odom_quat.y();
+		odom_trans.transform.rotation.z = odom_quat.z();
+        odom_trans.transform.rotation.w = odom_quat.w();
         odom_broadcaster.sendTransform(odom_trans);
 
         // Publish the odometry message over ROS
 		nav_msgs::Odometry odom;
 		odom.header.stamp = current_time;
-		odom.header.frame_id = "1"; // To be replaced with rosparam
+        n.getParam("uav_id", odom.header.frame_id);
 
         // Set the position
 		odom.pose.pose.position.x = x;
 		odom.pose.pose.position.y = y;
 		odom.pose.pose.position.z = 0.0;
-		odom.pose.pose.orientation = odom_quat;
+        odom.pose.pose.orientation.x = odom_quat.x();
+		odom.pose.pose.orientation.y = odom_quat.y();
+		odom.pose.pose.orientation.z = odom_quat.z();
+        odom.pose.pose.orientation.w = odom_quat.w();
 
 		// Set the velocity
-		odom.child_frame_id = "gcs";
+		n.getParam("child_frame_id", odom.child_frame_id);
 		odom.twist.twist.linear.x = vx;
 		odom.twist.twist.linear.y = vy;
 		odom.twist.twist.angular.z = vth;
