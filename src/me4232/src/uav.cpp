@@ -15,11 +15,12 @@
 #include <tf2_ros/transform_broadcaster.h>
 #include <nav_msgs/Odometry.h>
 
-// Describe Pos and Vel for a 6 DOF model (XYZ and RPY) at a certain timestep.
+// Describe Pos and Vel for a 6 DOF model (linear XYZ and angular XYZ thetas) at a certain timestep.
 // Units: m, m/s, rad, rad/s.
-// The positions are relative to the GCS/Global/Child frame, the velocities are relative to the UAV frame
+// The positions are relative to the GCS, or 'odom' frame, the velocities are relative to the UAV, or 'base_link' frame
+// Note that xth, yth and zth is angle of the UAV wrt odom origin, not the roll/pit/yaw of UAV
 typedef struct {
-	double x,y,z,roll,pit,yaw,vx,vy,vz,v_roll,v_pit,v_yaw;
+	double x,y,z,xth,yth,zth,vx,vy,vz,v_xth,v_yth,v_zth;
 	ros::Time current_time, last_time;
 } six_dof;
 
@@ -49,24 +50,23 @@ int main(int argc, char **argv){
 		// Compute odometry in a typical way given the velocities of the robot
 		compute_odom(&state);
 
-		// Since all odometry is 6DOF we'll need a quaternion created from roll, pitch, yaw
-		//geometry_msgs::Quaternion odom_quat = tf2_ros::createQuaternionMsgFromYaw(th); // Old tf method
-		odom_quat.setRPY(state.v_roll,state.v_pit,state.v_yaw);
+		// Since all odometry is 6DOF we'll need a quaternion created from x_theta, y_theta, z_theta
+		odom_quat.setRPY(state.v_xth,state.v_yth,state.v_zth);
 
 		// Publish the transform over tf
-		n.getParam("uav_id", odom_trans.header.frame_id);
-		n.getParam("child_frame_id", odom_trans.child_frame_id);
+		n.getParam("odom_frame_id", odom_trans.header.frame_id);
+		n.getParam("bsae_link_id", odom_trans.child_frame_id);
 		update_ros_tf(&state, &odom_quat, &odom_trans);
 		odom_broadcaster.sendTransform(odom_trans);
 
 		// Publish the odometry message over ROS
-		n.getParam("uav_id", odom.header.frame_id);
-		n.getParam("child_frame_id", odom.child_frame_id);
+		n.getParam("odom_frame_id", odom.header.frame_id);
+		n.getParam("base_link_id", odom.child_frame_id);
 		update_ros_odom(&state, &odom_quat, &odom);
 		odom_pub.publish(odom);
 
 		// Some logging msgs here to ensure the node is working
-		ROS_INFO_STREAM(odom.header.frame_id << " to " << odom.child_frame_id);
+		ROS_INFO_STREAM(odom.child_frame_id << " to " << odom.header.frame_id);
 		ROS_INFO_STREAM("Coords: [" << odom.pose.pose.position.x << ", " << odom.pose.pose.position.y << ", " << odom.pose.pose.position.z << "]");
 		ROS_INFO_STREAM("Quat: [" << odom.pose.pose.orientation.x << ", " << odom.pose.pose.orientation.y << ", " << odom.pose.pose.orientation.z << ", " << odom.pose.pose.orientation.w << "]");
 		ROS_INFO_STREAM("Linear Vel: [" << odom.twist.twist.linear.x << ", " << odom.twist.twist.linear.y << ", " << odom.twist.twist.linear.z << "]");
@@ -80,13 +80,13 @@ int main(int argc, char **argv){
 // Initialise the 6-DOF state. @TODO: Make the initialisation random/semi-random
 void init_state(six_dof *state){
 	state->x = state->y = state->z = 0.0;
-	state->roll = state->pit = state->yaw = 0.0;
+	state->xth = state->yth = state->zth = 0.0;
 	state->vx = 0.1;
 	state->vy = -0.1;
 	state->vz = 0.0;
-	state->v_roll = 0.0;
-	state->v_pit = 0.0;
-	state->v_yaw = 0.1;
+	state->v_xth = 0.0;
+	state->v_yth = 0.0;
+	state->v_zth = 0.1;
 	state->current_time = state->last_time = ros::Time::now();
 }
 
@@ -95,12 +95,12 @@ void init_state(six_dof *state){
 void compute_odom(six_dof *state){
 	state->current_time = ros::Time::now();
 	double dt = (state->current_time - state->last_time).toSec();
-	double delta_x = (state->vx * cos(state->yaw) - state->vy * sin(state->yaw)) * dt;
-	double delta_y = (state->vx * sin(state->yaw) + state->vy * cos(state->yaw)) * dt;
-	double delta_yaw = state->v_yaw * dt;
+	double delta_x = (state->vx * cos(state->zth) - state->vy * sin(state->zth)) * dt;
+	double delta_y = (state->vx * sin(state->zth) + state->vy * cos(state->zth)) * dt;
+	double delta_zth = state->v_zth * dt;
 	state->x += delta_x;
 	state->y += delta_y;
-	state->yaw += delta_yaw;
+	state->zth += delta_zth;
 	state->last_time = state->current_time;
 }
 
@@ -134,7 +134,7 @@ void update_ros_odom(six_dof *state, tf2::Quaternion *odom_quat, nav_msgs::Odome
 	odom->twist.twist.linear.x = state->vx;
 	odom->twist.twist.linear.y = state->vy;
 	odom->twist.twist.linear.z = state->vz;
-	odom->twist.twist.angular.x = state->v_roll;
-	odom->twist.twist.angular.y = state->v_pit;
-	odom->twist.twist.angular.z = state->v_yaw;
+	odom->twist.twist.angular.x = state->v_xth;
+	odom->twist.twist.angular.y = state->v_yth;
+	odom->twist.twist.angular.z = state->v_zth;
 }
