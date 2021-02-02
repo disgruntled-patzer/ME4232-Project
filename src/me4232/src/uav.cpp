@@ -55,7 +55,7 @@ int main(int argc, char **argv){
 
 		// Publish the transform over tf
 		n.getParam("odom_frame_id", odom_trans.header.frame_id);
-		n.getParam("bsae_link_id", odom_trans.child_frame_id);
+		n.getParam("base_link_id", odom_trans.child_frame_id);
 		update_ros_tf(&state, &odom_quat, &odom_trans);
 		odom_broadcaster.sendTransform(odom_trans);
 
