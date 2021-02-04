@@ -46,7 +46,7 @@ class uav_odom{
 		ros::Rate loop_rate = 1;
 
 		void init_state();
-		void compute_odom();
+		void compute_odom(imu_data reading);
 		void update_ros_tf();
 		void update_ros_odom();
 		void log_odom();
@@ -59,20 +59,38 @@ void uav_odom::init_state(){
 	state.xth = state.yth = state.zth = 0.0;
 	state.vx = state.vy = state.vz = 0.0;
 	state.v_xth = state.v_yth = state.v_zth = 0.0;
+	state.ax = state.ay = state.az = 0.0;
 	state.current_time = state.last_time = ros::Time::now();
 }
 
-// Update the 6-DOF odometry state for each time increment
-// Currently we assume 2D circular motion. @TODO: To expand to 3D motion
-void uav_odom::compute_odom(){
+// Update the 6-DOF odometry state for each time increment using the IMU linear accel + gyro angular vel reaidngs
+void uav_odom::compute_odom(imu_data reading){
 	state.current_time = ros::Time::now();
 	double dt = (state.current_time - state.last_time).toSec();
-	double delta_x = (state.vx * cos(state.zth) - state.vy * sin(state.zth)) * dt;
-	double delta_y = (state.vx * sin(state.zth) + state.vy * cos(state.zth)) * dt;
-	double delta_zth = state.v_zth * dt;
-	state.x += delta_x;
-	state.y += delta_y;
-	state.zth += delta_zth;
+	double dvx = 0.5*(state.ax + reading.ax)*dt;
+	double dvy = 0.5*(state.ay + reading.ay)*dt;
+	double dvz = 0.5*(state.az + reading.az)*dt;
+	double dx = 0.5*(state.vx + (state.vx + dvx))*dt;
+	double dy = 0.5*(state.vy + (state.vy + dvy))*dt;
+	double dz = 0.5*(state.vz + (state.vz + dvz))*dt;
+	double dxth = 0.5*(state.v_xth + reading.v_xth)*dt;
+	double dyth = 0.5*(state.v_yth + reading.v_yth)*dt;
+	double dzth = 0.5*(state.v_zth + reading.v_zth)*dt;
+	state.x += dx;
+	state.y += dy;
+	state.z += dz;
+	state.xth += dxth;
+	state.yth += dyth;
+	state.zth += dzth;
+	state.vx += dvx;
+	state.vy += dvy;
+	state.vz += dvz;
+	state.v_xth = reading.v_xth;
+	state.v_yth = reading.v_yth;
+	state.v_zth = reading.v_zth;
+	state.ax = reading.ax;
+	state.ay = reading.ay;
+	state.az = reading.az;
 	state.last_time = state.current_time;
 }
 
@@ -128,7 +146,10 @@ void uav_odom::odom_manager(){
 	while (ros::ok()){
 
 		// Compute odometry in a typical way given the velocities of the robot
-		compute_odom();
+		imu_data reading;
+		reading.ax = reading.ay = reading.az = 1.0; // temp; to be replaced later with proper accel source
+		reading.v_xth = reading.v_yth = reading.v_zth = 0.0; // temp; to be replaced later with proper gyro source
+		compute_odom(reading);
 
 		// Since all odometry is 6DOF we'll need a quaternion created from x_theta, y_theta, z_theta
 		odom_quat.setRPY(state.v_xth,state.v_yth,state.v_zth);
