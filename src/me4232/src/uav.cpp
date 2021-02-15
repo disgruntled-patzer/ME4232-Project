@@ -10,6 +10,10 @@
 
 */
 
+#include <fstream>
+#include <sstream>
+#include <vector>
+
 #include <ros/ros.h>
 #include <tf2/LinearMath/Quaternion.h>
 #include <tf2_ros/transform_broadcaster.h>
@@ -142,13 +146,36 @@ void uav_odom::log_odom(){
 void uav_odom::odom_manager(){
 
 	init_state();
+	imu_data reading;
 
-	while (ros::ok()){
+	// CSV file operations
+	std::string imu_data_location; // Location of csv file
+	n.getParam("imu_data_location", imu_data_location);
+	imu_data_location.append("straightliney.csv"); // @TODO: Replace file name with RNG
+	std::fstream reader; // File reader
+	reader.open(imu_data_location, std::fstream::in);
+	if (!reader.is_open()){
+		throw std::runtime_error("UAV: Could not read IMU data");
+	}
+	std::string line;
+	std::getline(reader, line); // Read and discard first row (which contains headers)
 
-		// Compute odometry in a typical way given the velocities of the robot
-		imu_data reading;
-		reading.ax = reading.ay = reading.az = 1.0; // temp; to be replaced later with proper accel source
-		reading.v_xth = reading.v_yth = reading.v_zth = 0.0; // temp; to be replaced later with proper gyro source
+	while (ros::ok() && std::getline(reader, line)){
+
+		// Extract imu data from the specified csv file and compute odometry
+		std::stringstream ss(line);
+		ss >> reading.ax;
+		ss.ignore();
+		ss >> reading.ay;
+		ss.ignore();
+		ss >> reading.az;
+		ss.ignore();
+		ss >> reading.v_xth;
+		ss.ignore();
+		ss >> reading.v_yth;
+		ss.ignore();
+		ss >> reading.v_zth;
+		ss.ignore();
 		compute_odom(reading);
 
 		// Since all odometry is 6DOF we'll need a quaternion created from x_theta, y_theta, z_theta
@@ -172,6 +199,7 @@ void uav_odom::odom_manager(){
 		ros::spinOnce();
 		loop_rate.sleep();
 	}
+	reader.close();
 }
 
 int main(int argc, char **argv){

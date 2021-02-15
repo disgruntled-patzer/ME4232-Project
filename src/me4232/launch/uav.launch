@@ -3,6 +3,7 @@
     <node name="uav" pkg="me4232" type="uav" respawn="true" respawn_delay="3" output="screen" />
         <param name="base_link_id" type="string" value="1" />
         <param name="odom_frame_id" value="gcs" />
+        <param name="imu_data_location" value="$(find me4232)/test/" />
     <!-- </node> -->
 
 </launch>
