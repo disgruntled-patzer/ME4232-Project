@@ -42,6 +42,12 @@ class uav_odom{
 		geometry_msgs::TransformStamped odom_trans;
 		nav_msgs::Odometry odom;
 		six_dof state;
+		imu_data reading;
+
+		// CSV file handlers
+		std::string imu_data_location; // Location of csv file
+		std::fstream reader; // File reader
+		std::string line; // To read each line from the csv file
 	
 	public:
 
@@ -50,7 +56,9 @@ class uav_odom{
 		ros::Rate loop_rate = 1;
 
 		void init_state();
-		void compute_odom(imu_data reading);
+		void access_imu_data();
+		void extract_imu_data();
+		void compute_odom();
 		void update_ros_tf();
 		void update_ros_odom();
 		void log_odom();
@@ -67,8 +75,36 @@ void uav_odom::init_state(){
 	state.current_time = state.last_time = ros::Time::now();
 }
 
+// Open the CSV file containing IMU data
+void uav_odom::access_imu_data(){
+	n.getParam("imu_data_location", imu_data_location);
+	imu_data_location.append("straightliney.csv"); // @TODO: Replace file name with RNG
+	reader.open(imu_data_location, std::fstream::in);
+	if (!reader.is_open()){
+		throw std::runtime_error("UAV: Could not read IMU data");
+	}
+	std::getline(reader, line); // Read and discard first row (which contains headers)
+}
+
+// Extract IMU data from csv file and put into the 6-DOF state
+void uav_odom::extract_imu_data(){
+	std::stringstream ss(line);
+	ss >> reading.ax;
+	ss.ignore();
+	ss >> reading.ay;
+	ss.ignore();
+	ss >> reading.az;
+	ss.ignore();
+	ss >> reading.v_xth;
+	ss.ignore();
+	ss >> reading.v_yth;
+	ss.ignore();
+	ss >> reading.v_zth;
+	ss.ignore();
+}
+
 // Update the 6-DOF odometry state for each time increment using the IMU linear accel + gyro angular vel reaidngs
-void uav_odom::compute_odom(imu_data reading){
+void uav_odom::compute_odom(){
 	state.current_time = ros::Time::now();
 	double dt = (state.current_time - state.last_time).toSec();
 	double dvx = 0.5*(state.ax + reading.ax)*dt;
@@ -100,6 +136,8 @@ void uav_odom::compute_odom(imu_data reading){
 
 // Update the ros transform message with data from tht 6-DOF state and quaternion
 void uav_odom::update_ros_tf(){
+	n.getParam("odom_frame_id", odom_trans.header.frame_id);
+	n.getParam("base_link_id", odom_trans.child_frame_id);
 	odom_trans.header.stamp = state.current_time;
 	odom_trans.transform.translation.x = state.x;
 	odom_trans.transform.translation.y = state.y;
@@ -113,6 +151,8 @@ void uav_odom::update_ros_tf(){
 // Update the ros odometry message with data from tht 6-DOF state and quaternion
 void uav_odom::update_ros_odom(){
 
+	n.getParam("odom_frame_id", odom.header.frame_id);
+	n.getParam("base_link_id", odom.child_frame_id);
 	odom.header.stamp = state.current_time;
 
 	// Set the position
@@ -146,50 +186,22 @@ void uav_odom::log_odom(){
 void uav_odom::odom_manager(){
 
 	init_state();
-	imu_data reading;
-
-	// CSV file operations
-	std::string imu_data_location; // Location of csv file
-	n.getParam("imu_data_location", imu_data_location);
-	imu_data_location.append("straightliney.csv"); // @TODO: Replace file name with RNG
-	std::fstream reader; // File reader
-	reader.open(imu_data_location, std::fstream::in);
-	if (!reader.is_open()){
-		throw std::runtime_error("UAV: Could not read IMU data");
-	}
-	std::string line;
-	std::getline(reader, line); // Read and discard first row (which contains headers)
+	access_imu_data();
 
 	while (ros::ok() && std::getline(reader, line)){
 
 		// Extract imu data from the specified csv file and compute odometry
-		std::stringstream ss(line);
-		ss >> reading.ax;
-		ss.ignore();
-		ss >> reading.ay;
-		ss.ignore();
-		ss >> reading.az;
-		ss.ignore();
-		ss >> reading.v_xth;
-		ss.ignore();
-		ss >> reading.v_yth;
-		ss.ignore();
-		ss >> reading.v_zth;
-		ss.ignore();
-		compute_odom(reading);
+		extract_imu_data();
+		compute_odom();
 
 		// Since all odometry is 6DOF we'll need a quaternion created from x_theta, y_theta, z_theta
 		odom_quat.setRPY(state.v_xth,state.v_yth,state.v_zth);
 
 		// Publish the transform over tf
-		n.getParam("odom_frame_id", odom_trans.header.frame_id);
-		n.getParam("base_link_id", odom_trans.child_frame_id);
 		update_ros_tf();
 		odom_broadcaster.sendTransform(odom_trans);
 
 		// Publish the odometry message over ROS
-		n.getParam("odom_frame_id", odom.header.frame_id);
-		n.getParam("base_link_id", odom.child_frame_id);
 		update_ros_odom();
 		odom_pub.publish(odom);
 
