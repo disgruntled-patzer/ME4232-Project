@@ -86,15 +86,17 @@ void uav_odom::init_state(){
 
 // Randomly select and open a CSV trajectory file
 void uav_odom::access_imu_data(){
-	std::string location;
+	std::string uav_id, location;
+	n.getParam("base_link_id", uav_id);
 	n.getParam("imu_data_location", location); // Location to csv files
 	srand(time(0));
 	int filename = rand() % MAX_TRAJ; // Filename is a random number from 0 to (MAX_TRAJ - 1)
 	std::stringstream ss;
-	ss << location << filename << ".csv"; // Assembly the full directory to the file
+	ss << location << filename << ".csv"; // Assemble the full directory to the file
+	// ss << location << "3.csv"; // Assemble the full directory to the file
 	imu_data_src = ss.str();
 	#ifdef DEBUG
-		ROS_INFO_STREAM("Opening file " << imu_data_src);
+		ROS_INFO_STREAM("UAV " << uav_id << " opening file " << imu_data_src);
 	#endif
 	// Once filename is generated, open it
 	reader.open(imu_data_src, std::fstream::in);
@@ -128,12 +130,12 @@ void uav_odom::compute_odom(){
 	double dvx = 0.5*(state.ax + reading.ax)*dt;
 	double dvy = 0.5*(state.ay + reading.ay)*dt;
 	double dvz = 0.5*(state.az + reading.az)*dt;
-	double dx = 0.5*(state.vx + (state.vx + dvx))*dt;
-	double dy = 0.5*(state.vy + (state.vy + dvy))*dt;
-	double dz = 0.5*(state.vz + (state.vz + dvz))*dt;
 	double dxth = 0.5*(state.v_xth + reading.v_xth)*dt;
 	double dyth = 0.5*(state.v_yth + reading.v_yth)*dt;
 	double dzth = 0.5*(state.v_zth + reading.v_zth)*dt;
+	double dx = 0.5*(state.vx + (state.vx + dvx))*dt;
+	double dy = 0.5*(state.vy + (state.vy + dvy))*dt;
+	double dz = 0.5*(state.vz + (state.vz + dvz))*dt;
 	state.x += dx;
 	state.y += dy;
 	state.z += dz;
@@ -195,6 +197,7 @@ void uav_odom::update_ros_odom(){
 void uav_odom::log_odom(){
 	ROS_INFO_STREAM(odom.child_frame_id << " to " << odom.header.frame_id);
 	ROS_INFO_STREAM("Coords: [" << odom.pose.pose.position.x << ", " << odom.pose.pose.position.y << ", " << odom.pose.pose.position.z << "]");
+	ROS_INFO_STREAM("Orientation: [" << state.xth << ", " << state.yth << ", " << state.zth << "]");
 	ROS_INFO_STREAM("Quat: [" << odom.pose.pose.orientation.x << ", " << odom.pose.pose.orientation.y << ", " << odom.pose.pose.orientation.z << ", " << odom.pose.pose.orientation.w << "]");
 	ROS_INFO_STREAM("Linear Vel: [" << odom.twist.twist.linear.x << ", " << odom.twist.twist.linear.y << ", " << odom.twist.twist.linear.z << "]");
 	ROS_INFO_STREAM("Ang Vel: [" << odom.twist.twist.angular.x << ", " << odom.twist.twist.angular.y << ", " << odom.twist.twist.angular.z << "]");
@@ -213,7 +216,7 @@ void uav_odom::odom_manager(){
 		compute_odom();
 
 		// Since all odometry is 6DOF we'll need a quaternion created from x_theta, y_theta, z_theta
-		odom_quat.setRPY(state.v_xth,state.v_yth,state.v_zth);
+		odom_quat.setRPY(state.xth,state.yth,state.zth);
 
 		// Publish the transform over tf
 		update_ros_tf();
