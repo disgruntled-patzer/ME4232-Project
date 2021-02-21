@@ -15,7 +15,7 @@
 #include <stdlib.h>
 
 #include <ros/ros.h>
-#include <tf2/LinearMath/Quaternion.h>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 #include <tf2_ros/transform_broadcaster.h>
 #include <nav_msgs/Odometry.h>
 
@@ -23,10 +23,9 @@
 #define MAX_INITIAL_POS 5 // Max possible value of starting XYZ coordinates
 #define DEBUG
 
-// Describe Pos, Vel, Acc for a 6 DOF model (linear XYZ and angular XYZ thetas) at a certain timestep.
+// Describe Pos, Vel, Acc for a 6 DOF model (XYZ and RPY) at a certain timestep.
 // Units: m, m/s, rad, rad/s.
-// The positions are relative to the GCS, or 'odom' frame, the velocities are relative to the UAV, or 'base_link' frame
-// Note that xth, yth and zth is angle of the UAV wrt odom origin, not the roll/pit/yaw of UAV
+// The linear positions are relative to the GCS, or 'odom' frame, all others relative to the UAV, or 'base_link' frame
 typedef struct {
 	double x,y,z,xth,yth,zth,vx,vy,vz,v_xth,v_yth,v_zth,ax,ay,az;
 	ros::Time current_time, last_time;
@@ -63,6 +62,7 @@ class uav_odom{
 		void access_imu_data();
 		void extract_imu_data();
 		void compute_odom();
+		void calc_rotations(double dxth, double dyth, double dzth);
 		void update_ros_tf();
 		void update_ros_odom();
 		void log_odom();
@@ -93,7 +93,7 @@ void uav_odom::access_imu_data(){
 	int filename = rand() % MAX_TRAJ; // Filename is a random number from 0 to (MAX_TRAJ - 1)
 	std::stringstream ss;
 	ss << location << filename << ".csv"; // Assemble the full directory to the file
-	// ss << location << "3.csv"; // Assemble the full directory to the file
+	//ss << location << "3.csv"; // Assemble the full directory to the file
 	imu_data_src = ss.str();
 	#ifdef DEBUG
 		ROS_INFO_STREAM("UAV " << uav_id << " opening file " << imu_data_src);
@@ -133,12 +133,14 @@ void uav_odom::compute_odom(){
 	double dxth = 0.5*(state.v_xth + reading.v_xth)*dt;
 	double dyth = 0.5*(state.v_yth + reading.v_yth)*dt;
 	double dzth = 0.5*(state.v_zth + reading.v_zth)*dt;
-	double dx = 0.5*(state.vx + (state.vx + dvx))*dt;
+	// To calculate x/y/z, first calculate linear motion, then add angular motion
+	double dx = 0.5*(state.vx + (state.vx + dvx))*dt; // Add linear motion
 	double dy = 0.5*(state.vy + (state.vy + dvy))*dt;
 	double dz = 0.5*(state.vz + (state.vz + dvz))*dt;
 	state.x += dx;
 	state.y += dy;
 	state.z += dz;
+	calc_rotations(dxth,dyth,dzth); // Add angular motion
 	state.xth += dxth;
 	state.yth += dyth;
 	state.zth += dzth;
@@ -152,6 +154,23 @@ void uav_odom::compute_odom(){
 	state.ay = reading.ay;
 	state.az = reading.az;
 	state.last_time = state.current_time;
+}
+
+// Calculate the XYZ positions for the 6-DOF state when there are rotations taking place
+// @TODO: Explain how the angular motion is taken into account
+void uav_odom::calc_rotations(double dxth, double dyth, double dzth){
+	tf2::Quaternion quat_rot, quat_rot_conj, quat_old, quat_new;
+	quat_rot.setRPY(dxth, dyth, dzth);
+	// quat_rot_conj.setValue(-1 * quat_rot.x(), -1 * quat_rot.y()
+	// 							-1 * quat_rot.z(), quat_rot.w());
+	quat_old.setValue(state.x, state.y, state.z);
+	quat_new = quat_rot * quat_old;
+	ROS_INFO_STREAM("quad_rot: " << quat_rot.w() << ", " << quat_rot.x() << ", " << quat_rot.y() << ", " << quat_rot.z());
+	ROS_INFO_STREAM("quad_old: " << quat_old.w() << ", " << quat_old.x() << ", " << quat_old.y() << ", " << quat_old.z());
+	ROS_INFO_STREAM("quad_new: " << quat_new.w() << ", " << quat_new.x() << ", " << quat_new.y() << ", " << quat_new.z());
+	state.x = quat_new.x();
+	state.y = quat_new.y();
+	state.z = quat_new.z();
 }
 
 // Update the ros transform message with data from tht 6-DOF state and quaternion
@@ -198,7 +217,7 @@ void uav_odom::log_odom(){
 	ROS_INFO_STREAM(odom.child_frame_id << " to " << odom.header.frame_id);
 	ROS_INFO_STREAM("Coords: [" << odom.pose.pose.position.x << ", " << odom.pose.pose.position.y << ", " << odom.pose.pose.position.z << "]");
 	ROS_INFO_STREAM("Orientation: [" << state.xth << ", " << state.yth << ", " << state.zth << "]");
-	ROS_INFO_STREAM("Quat: [" << odom.pose.pose.orientation.x << ", " << odom.pose.pose.orientation.y << ", " << odom.pose.pose.orientation.z << ", " << odom.pose.pose.orientation.w << "]");
+	//ROS_INFO_STREAM("Quat: [" << odom.pose.pose.orientation.w << ", " << odom.pose.pose.orientation.y << ", " << odom.pose.pose.orientation.y << ", " << odom.pose.pose.orientation.z << "]");
 	ROS_INFO_STREAM("Linear Vel: [" << odom.twist.twist.linear.x << ", " << odom.twist.twist.linear.y << ", " << odom.twist.twist.linear.z << "]");
 	ROS_INFO_STREAM("Ang Vel: [" << odom.twist.twist.angular.x << ", " << odom.twist.twist.angular.y << ", " << odom.twist.twist.angular.z << "]");
 }
