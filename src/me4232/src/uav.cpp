@@ -23,11 +23,11 @@
 #define MAX_INITIAL_POS 5 // Max possible value of starting XYZ coordinates
 #define DEBUG
 
-// Describe Pos, Vel, Acc for a 6 DOF model (XYZ and RPY) at a certain timestep.
+// Describe Pos and Vel for a 6 DOF model (XYZ and RPY) at a certain timestep.
 // Units: m, m/s, rad, rad/s.
 // The linear positions are relative to the GCS, or 'odom' frame, all others relative to the UAV, or 'base_link' frame
 typedef struct {
-	double x,y,z,xth,yth,zth,vx,vy,vz,v_xth,v_yth,v_zth,ax,ay,az;
+	double x,y,z,xth,yth,zth,vx,vy,vz,v_xth,v_yth,v_zth;
 	ros::Time current_time, last_time;
 } six_dof;
 
@@ -80,7 +80,6 @@ void uav_odom::init_state(){
 	state.xth = state.yth = state.zth = 0.0;
 	state.vx = state.vy = state.vz = 0.0;
 	state.v_xth = state.v_yth = state.v_zth = 0.0;
-	state.ax = state.ay = state.az = 0.0;
 	state.current_time = state.last_time = ros::Time::now();
 }
 
@@ -92,8 +91,8 @@ void uav_odom::access_imu_data(){
 	srand(time(0));
 	int filename = rand() % MAX_TRAJ; // Filename is a random number from 0 to (MAX_TRAJ - 1)
 	std::stringstream ss;
-	ss << location << filename << ".csv"; // Assemble the full directory to the file
-	//ss << location << "3.csv"; // Assemble the full directory to the file
+	//ss << location << filename << ".csv"; // Assemble the full directory to the file
+	ss << location << "3.csv"; // Assemble the full directory to the file
 	imu_data_src = ss.str();
 	#ifdef DEBUG
 		ROS_INFO_STREAM("UAV " << uav_id << " opening file " << imu_data_src);
@@ -127,32 +126,32 @@ void uav_odom::extract_imu_data(){
 void uav_odom::compute_odom(){
 	state.current_time = ros::Time::now();
 	double dt = (state.current_time - state.last_time).toSec();
-	double dvx = 0.5*(state.ax + reading.ax)*dt;
-	double dvy = 0.5*(state.ay + reading.ay)*dt;
-	double dvz = 0.5*(state.az + reading.az)*dt;
-	double dxth = 0.5*(state.v_xth + reading.v_xth)*dt;
-	double dyth = 0.5*(state.v_yth + reading.v_yth)*dt;
-	double dzth = 0.5*(state.v_zth + reading.v_zth)*dt;
-	// To calculate x/y/z, first calculate linear motion, then add angular motion
-	double dx = 0.5*(state.vx + (state.vx + dvx))*dt; // Add linear motion
-	double dy = 0.5*(state.vy + (state.vy + dvy))*dt;
-	double dz = 0.5*(state.vz + (state.vz + dvz))*dt;
+	// RPY Rates
+	state.v_xth = reading.v_xth;
+	state.v_yth = reading.v_yth;
+	state.v_zth = reading.v_zth;
+	// XYZ Rates
+	double dvx = reading.ax*dt;
+	double dvy = reading.ay*dt;
+	double dvz = reading.az*dt;
+	state.vx += dvx;
+	state.vy += dvy;
+	state.vz += dvz;
+	// RPY
+	double dxth = reading.v_xth*dt;
+	double dyth = reading.v_yth*dt;
+	double dzth = reading.v_zth*dt;
+	state.xth += dxth;
+	state.yth += dyth;
+	state.zth += dzth;
+	// To calculate XYZ, first calculate linear motion, then add angular motion
+	double dx = state.vx*dt; // Add linear motion
+	double dy = state.vy*dt;
+	double dz = state.vz*dt;
 	state.x += dx;
 	state.y += dy;
 	state.z += dz;
 	calc_rotations(dxth,dyth,dzth); // Add angular motion
-	state.xth += dxth;
-	state.yth += dyth;
-	state.zth += dzth;
-	state.vx += dvx;
-	state.vy += dvy;
-	state.vz += dvz;
-	state.v_xth = reading.v_xth;
-	state.v_yth = reading.v_yth;
-	state.v_zth = reading.v_zth;
-	state.ax = reading.ax;
-	state.ay = reading.ay;
-	state.az = reading.az;
 	state.last_time = state.current_time;
 }
 
