@@ -21,7 +21,7 @@
 
 #define MAX_TRAJ 4 // Max number of CSV trajectory files
 #define MAX_INITIAL_POS 5 // Max possible value of starting XYZ coordinates
-#define DEBUG
+// #define DEBUG
 
 // Describe Pos and Vel for a 6 DOF model (XYZ and RPY) at a certain timestep.
 // Units: m, m/s, rad, rad/s.
@@ -56,9 +56,9 @@ class uav_odom{
 
 		ros::NodeHandle n;
 		ros::Publisher odom_pub = n.advertise<nav_msgs::Odometry>("uav/odom", 100);
-		ros::Rate loop_rate = 1;
+		ros::Rate loop_rate = 10;
 
-		void init_state();
+		uav_odom();
 		void access_imu_data();
 		void extract_imu_data();
 		void compute_odom();
@@ -70,7 +70,7 @@ class uav_odom{
 };
 
 // Initialise the 6-DOF state
-void uav_odom::init_state(){
+uav_odom::uav_odom(){
 	// Starting XYZ position is random
 	srand(time(0));
 	state.x = double(rand() % MAX_INITIAL_POS);
@@ -91,12 +91,13 @@ void uav_odom::access_imu_data(){
 	srand(time(0));
 	int filename = rand() % MAX_TRAJ; // Filename is a random number from 0 to (MAX_TRAJ - 1)
 	std::stringstream ss;
-	//ss << location << filename << ".csv"; // Assemble the full directory to the file
-	ss << location << "3.csv"; // Assemble the full directory to the file
-	imu_data_src = ss.str();
 	#ifdef DEBUG
-		ROS_INFO_STREAM("UAV " << uav_id << " opening file " << imu_data_src);
+		ss << location << "3.csv"; // Assemble the full directory to the file
+	#else
+		ss << location << filename << ".csv"; // Assemble the full directory to the file
 	#endif
+	imu_data_src = ss.str();
+	ROS_INFO_STREAM("UAV " << uav_id << " opening file " << imu_data_src);
 	// Once filename is generated, open it
 	reader.open(imu_data_src, std::fstream::in);
 	if (!reader.is_open()){
@@ -160,13 +161,13 @@ void uav_odom::compute_odom(){
 void uav_odom::calc_rotations(double dxth, double dyth, double dzth){
 	tf2::Quaternion quat_rot, quat_rot_conj, quat_old, quat_new;
 	quat_rot.setRPY(dxth, dyth, dzth);
-	// quat_rot_conj.setValue(-1 * quat_rot.x(), -1 * quat_rot.y()
-	// 							-1 * quat_rot.z(), quat_rot.w());
 	quat_old.setValue(state.x, state.y, state.z);
 	quat_new = quat_rot * quat_old;
-	ROS_INFO_STREAM("quad_rot: " << quat_rot.w() << ", " << quat_rot.x() << ", " << quat_rot.y() << ", " << quat_rot.z());
-	ROS_INFO_STREAM("quad_old: " << quat_old.w() << ", " << quat_old.x() << ", " << quat_old.y() << ", " << quat_old.z());
-	ROS_INFO_STREAM("quad_new: " << quat_new.w() << ", " << quat_new.x() << ", " << quat_new.y() << ", " << quat_new.z());
+	#ifdef DEBUG
+		ROS_INFO_STREAM("quad_rot: " << quat_rot.w() << ", " << quat_rot.x() << ", " << quat_rot.y() << ", " << quat_rot.z());
+		ROS_INFO_STREAM("quad_old: " << quat_old.w() << ", " << quat_old.x() << ", " << quat_old.y() << ", " << quat_old.z());
+		ROS_INFO_STREAM("quad_new: " << quat_new.w() << ", " << quat_new.x() << ", " << quat_new.y() << ", " << quat_new.z());
+	#endif
 	state.x = quat_new.x();
 	state.y = quat_new.y();
 	state.z = quat_new.z();
@@ -215,8 +216,7 @@ void uav_odom::update_ros_odom(){
 void uav_odom::log_odom(){
 	ROS_INFO_STREAM(odom.child_frame_id << " to " << odom.header.frame_id);
 	ROS_INFO_STREAM("Coords: [" << odom.pose.pose.position.x << ", " << odom.pose.pose.position.y << ", " << odom.pose.pose.position.z << "]");
-	ROS_INFO_STREAM("Orientation: [" << state.xth << ", " << state.yth << ", " << state.zth << "]");
-	//ROS_INFO_STREAM("Quat: [" << odom.pose.pose.orientation.w << ", " << odom.pose.pose.orientation.y << ", " << odom.pose.pose.orientation.y << ", " << odom.pose.pose.orientation.z << "]");
+	ROS_INFO_STREAM("Quat: [" << odom.pose.pose.orientation.w << ", " << odom.pose.pose.orientation.y << ", " << odom.pose.pose.orientation.y << ", " << odom.pose.pose.orientation.z << "]");
 	ROS_INFO_STREAM("Linear Vel: [" << odom.twist.twist.linear.x << ", " << odom.twist.twist.linear.y << ", " << odom.twist.twist.linear.z << "]");
 	ROS_INFO_STREAM("Ang Vel: [" << odom.twist.twist.angular.x << ", " << odom.twist.twist.angular.y << ", " << odom.twist.twist.angular.z << "]");
 }
@@ -224,7 +224,6 @@ void uav_odom::log_odom(){
 // "Main" function to broadcast tf and odom msgs to GCS and receive cmds
 void uav_odom::odom_manager(){
 
-	init_state();
 	access_imu_data();
 
 	while (ros::ok() && std::getline(reader, line)){
@@ -245,9 +244,7 @@ void uav_odom::odom_manager(){
 		odom_pub.publish(odom);
 
 		// Some logging msgs here to ensure the node is working
-		#ifdef DEBUG
-			log_odom();
-		#endif
+		log_odom();
 
 		ros::spinOnce();
 		loop_rate.sleep();
