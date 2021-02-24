@@ -178,7 +178,7 @@ void uav_odom::calc_rotations(double dxth, double dyth, double dzth){
 		quat_rot_conj.setValue(-quat_rot.x(), -quat_rot.y(), -quat_rot.z(), quat_rot.w());
 		quat_result = quat_rot * quat_result * quat_rot_conj;
 	}
-	if (dzth){ // And finally x
+	if (dxth){ // And finally x
 		quat_rot.setValue(sin(dxth/2), 0, 0, cos(dxth/2));
 		quat_rot_conj.setValue(-quat_rot.x(), -quat_rot.y(), -quat_rot.z(), quat_rot.w());
 		quat_result = quat_rot * quat_result * quat_rot_conj;
