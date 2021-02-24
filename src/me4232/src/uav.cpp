@@ -11,6 +11,7 @@
 */
 
 #include <fstream>
+#include <math.h>
 #include <sstream>
 #include <stdlib.h>
 
@@ -159,18 +160,29 @@ void uav_odom::compute_odom(){
 // Calculate the XYZ positions for the 6-DOF state when there are rotations taking place
 // @TODO: Explain how the angular motion is taken into account
 void uav_odom::calc_rotations(double dxth, double dyth, double dzth){
-	tf2::Quaternion quat_rot, quat_rot_conj, quat_old, quat_new;
-	quat_rot.setRPY(dxth, dyth, dzth);
-	quat_old.setValue(state.x, state.y, state.z);
-	quat_new = quat_rot * quat_old;
+	tf2::Quaternion quat_rot_x, quat_rot_x_conj, 
+					quat_rot_y, quat_rot_y_conj,
+					quat_rot_z, quat_rot_z_conj,
+					quat_1, quat_2;
+	quat_rot_x.setValue(sin(dxth/2), 0, 0, cos(dxth/2));
+	quat_rot_x_conj.setValue(-sin(dxth/2), 0, 0, cos(dxth/2));
+	quat_rot_y.setValue(0, sin(dyth/2), 0, cos(dyth/2));
+	quat_rot_y_conj.setValue(0, -sin(dyth/2), 0, cos(dyth/2));
+	quat_rot_z.setValue(0, 0, sin(dzth/2), cos(dzth/2));
+	quat_rot_z_conj.setValue(0, 0, -sin(dzth/2), cos(dzth/2));
+	quat_1.setValue(state.x, state.y, state.z);
 	#ifdef DEBUG
-		ROS_INFO_STREAM("quad_rot: " << quat_rot.w() << ", " << quat_rot.x() << ", " << quat_rot.y() << ", " << quat_rot.z());
-		ROS_INFO_STREAM("quad_old: " << quat_old.w() << ", " << quat_old.x() << ", " << quat_old.y() << ", " << quat_old.z());
-		ROS_INFO_STREAM("quad_new: " << quat_new.w() << ", " << quat_new.x() << ", " << quat_new.y() << ", " << quat_new.z());
+		ROS_INFO_STREAM("quad_old: " << quat_1.w() << ", " << quat_1.x() << ", " << quat_1.y() << ", " << quat_1.z());
 	#endif
-	state.x = quat_new.x();
-	state.y = quat_new.y();
-	state.z = quat_new.z();
+	quat_2 = quat_rot_z * quat_1 * quat_rot_z_conj;
+	quat_1 = quat_rot_y * quat_2 * quat_rot_y_conj;
+	quat_2 = quat_rot_x * quat_1 * quat_rot_x_conj;
+	#ifdef DEBUG
+		ROS_INFO_STREAM("quad_new: " << quat_2.w() << ", " << quat_2.x() << ", " << quat_2.y() << ", " << quat_2.z());
+	#endif
+	state.x = quat_2.x();
+	state.y = quat_2.y();
+	state.z = quat_2.z();
 }
 
 // Update the ros transform message with data from tht 6-DOF state and quaternion
