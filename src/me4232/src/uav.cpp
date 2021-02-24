@@ -153,36 +153,43 @@ void uav_odom::compute_odom(){
 	state.x += dx;
 	state.y += dy;
 	state.z += dz;
-	calc_rotations(dxth,dyth,dzth); // Add angular motion
+	if (dxth || dyth || dzth){
+		calc_rotations(dxth,dyth,dzth); // Add angular motion if needed
+	}
 	state.last_time = state.current_time;
 }
 
 // Calculate the XYZ positions for the 6-DOF state when there are rotations taking place
-// @TODO: Explain how the angular motion is taken into account
+// A quaternion rotation is performed for each axis
+// The convention used is Z-Y-X rotation, and the angles are Tait-Bryan "Euler" angles (aka RPY)
 void uav_odom::calc_rotations(double dxth, double dyth, double dzth){
-	tf2::Quaternion quat_rot_x, quat_rot_x_conj, 
-					quat_rot_y, quat_rot_y_conj,
-					quat_rot_z, quat_rot_z_conj,
-					quat_1, quat_2;
-	quat_rot_x.setValue(sin(dxth/2), 0, 0, cos(dxth/2));
-	quat_rot_x_conj.setValue(-sin(dxth/2), 0, 0, cos(dxth/2));
-	quat_rot_y.setValue(0, sin(dyth/2), 0, cos(dyth/2));
-	quat_rot_y_conj.setValue(0, -sin(dyth/2), 0, cos(dyth/2));
-	quat_rot_z.setValue(0, 0, sin(dzth/2), cos(dzth/2));
-	quat_rot_z_conj.setValue(0, 0, -sin(dzth/2), cos(dzth/2));
-	quat_1.setValue(state.x, state.y, state.z);
+	tf2::Quaternion quat_rot, quat_rot_conj, quat_result;
+	quat_result.setValue(state.x, state.y, state.z);
 	#ifdef DEBUG
-		ROS_INFO_STREAM("quad_old: " << quat_1.w() << ", " << quat_1.x() << ", " << quat_1.y() << ", " << quat_1.z());
+		ROS_INFO_STREAM("quad_old: " << quat_result.w() << ", " << quat_result.x() << ", " << quat_result.y() << ", " << quat_result.z());
 	#endif
-	quat_2 = quat_rot_z * quat_1 * quat_rot_z_conj;
-	quat_1 = quat_rot_y * quat_2 * quat_rot_y_conj;
-	quat_2 = quat_rot_x * quat_1 * quat_rot_x_conj;
+	if (dzth){ // First rotate around z...
+		quat_rot.setValue(0, 0, sin(dzth/2), cos(dzth/2));
+		quat_rot_conj.setValue(-quat_rot.x(), -quat_rot.y(), -quat_rot.z(), quat_rot.w());
+		quat_result = quat_rot * quat_result * quat_rot_conj;
+	}
+	if (dyth){ /// Then y...
+		quat_rot.setValue(0, sin(dyth/2), 0, cos(dyth/2));
+		quat_rot_conj.setValue(-quat_rot.x(), -quat_rot.y(), -quat_rot.z(), quat_rot.w());
+		quat_result = quat_rot * quat_result * quat_rot_conj;
+	}
+	if (dzth){ // And finally x
+		quat_rot.setValue(sin(dxth/2), 0, 0, cos(dxth/2));
+		quat_rot_conj.setValue(-quat_rot.x(), -quat_rot.y(), -quat_rot.z(), quat_rot.w());
+		quat_result = quat_rot * quat_result * quat_rot_conj;
+	}
+	quat_result = quat_rot * quat_result * quat_rot_conj;
 	#ifdef DEBUG
-		ROS_INFO_STREAM("quad_new: " << quat_2.w() << ", " << quat_2.x() << ", " << quat_2.y() << ", " << quat_2.z());
+		ROS_INFO_STREAM("quad_new: " << quat_result.w() << ", " << quat_result.x() << ", " << quat_result.y() << ", " << quat_result.z());
 	#endif
-	state.x = quat_2.x();
-	state.y = quat_2.y();
-	state.z = quat_2.z();
+	state.x = quat_result.x();
+	state.y = quat_result.y();
+	state.z = quat_result.z();
 }
 
 // Update the ros transform message with data from tht 6-DOF state and quaternion
