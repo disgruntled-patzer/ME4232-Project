@@ -22,6 +22,9 @@
 
 #define MAX_TRAJ 7 // Max number of CSV trajectory files
 #define MAX_INITIAL_POS 5 // Max possible value of starting XYZ coordinates
+#define MAX_ACC 1 // Max possible IMU acceleration
+#define MAX_ANG_VEL 0.5 // Max possible gyro angular velocity
+// #define CSV // Get IMU/gyro data from a selected CSV file. If this macro is off, the IMU/gyro data is generated randomly
 // #define DEBUG
 
 // Describe Pos and Vel for a 6 DOF model (XYZ and RPY) at a certain timestep.
@@ -108,21 +111,30 @@ void uav_odom::access_imu_data(){
 	std::getline(reader, line); // Read and discard first row (which contains headers)
 }
 
-// Extract IMU data from csv file and put into the 6-DOF state
+// Extract IMU data and put into the 6-DOF state
 void uav_odom::extract_imu_data(){
-	std::stringstream ss(line);
-	ss >> reading.ax;
-	ss.ignore();
-	ss >> reading.ay;
-	ss.ignore();
-	ss >> reading.az;
-	ss.ignore();
-	ss >> reading.v_xth;
-	ss.ignore();
-	ss >> reading.v_yth;
-	ss.ignore();
-	ss >> reading.v_zth;
-	ss.ignore();
+	#ifdef CSV // Extract data from CSV file
+		std::stringstream ss(line);
+		ss >> reading.ax;
+		ss.ignore();
+		ss >> reading.ay;
+		ss.ignore();
+		ss >> reading.az;
+		ss.ignore();
+		ss >> reading.v_xth;
+		ss.ignore();
+		ss >> reading.v_yth;
+		ss.ignore();
+		ss >> reading.v_zth;
+		ss.ignore();
+	#else // Generate random data between 0 - MAX_ACC (for accel) and 0 - MAX_ANG_VEL (for angular velocity)
+		reading.ax = (double)rand()/RAND_MAX*MAX_ACC;
+		reading.ay = (double)rand()/RAND_MAX*MAX_ACC;
+		reading.az = (double)rand()/RAND_MAX*MAX_ACC;
+		reading.v_xth = (double)rand()/RAND_MAX*MAX_ANG_VEL;
+		reading.v_yth = (double)rand()/RAND_MAX*MAX_ANG_VEL;
+		reading.v_zth = (double)rand()/RAND_MAX*MAX_ANG_VEL;
+	#endif
 }
 
 // Update the 6-DOF odometry state for each time increment using the IMU linear accel + gyro angular vel reaidngs
@@ -245,9 +257,18 @@ void uav_odom::log_odom(){
 // "Main" function to broadcast tf and odom msgs to GCS and receive cmds
 void uav_odom::odom_manager(){
 
-	access_imu_data();
+	#ifdef CSV
+		access_imu_data();
+	#endif
 
-	while (ros::ok() && std::getline(reader, line)){
+	while (ros::ok()){
+
+		// Break if end of csv file reached
+		#ifdef CSV
+			if (!std::getline(reader, line)){
+				break;
+			}
+		#endif
 
 		// Extract imu data from the specified csv file and compute odometry
 		extract_imu_data();
