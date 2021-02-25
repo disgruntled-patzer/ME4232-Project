@@ -20,7 +20,7 @@
 #include <tf2_ros/transform_broadcaster.h>
 #include <nav_msgs/Odometry.h>
 
-#define MAX_TRAJ 4 // Max number of CSV trajectory files
+#define MAX_TRAJ 7 // Max number of CSV trajectory files
 #define MAX_INITIAL_POS 5 // Max possible value of starting XYZ coordinates
 // #define DEBUG
 
@@ -63,7 +63,7 @@ class uav_odom{
 		void access_imu_data();
 		void extract_imu_data();
 		void compute_odom();
-		void calc_rotations(double dxth, double dyth, double dzth);
+		void quat_rotate(double &x, double &y, double &z, double xth, double yth, double zth);
 		void update_ros_tf();
 		void update_ros_odom();
 		void log_odom();
@@ -90,13 +90,14 @@ void uav_odom::access_imu_data(){
 	n.getParam("base_link_id", uav_id);
 	n.getParam("imu_data_location", location); // Location to csv files
 	srand(time(0));
-	int filename = rand() % MAX_TRAJ; // Filename is a random number from 0 to (MAX_TRAJ - 1)
+	int filename;
 	std::stringstream ss;
 	#ifdef DEBUG
-		ss << location << "3.csv"; // Assemble the full directory to the file
+		n.getParam("filename", filename);
 	#else
-		ss << location << filename << ".csv"; // Assemble the full directory to the file
+		filename = rand() % MAX_TRAJ; // Filename is a random number from 0 to (MAX_TRAJ - 1)
 	#endif
+	ss << location << filename << ".csv"; // Assemble the full directory to the file
 	imu_data_src = ss.str();
 	ROS_INFO_STREAM("UAV " << uav_id << " opening file " << imu_data_src);
 	// Once filename is generated, open it
@@ -150,46 +151,47 @@ void uav_odom::compute_odom(){
 	double dx = state.vx*dt; // Add linear motion
 	double dy = state.vy*dt;
 	double dz = state.vz*dt;
+	if (state.xth || state.yth || state.zth){
+		quat_rotate(dx, dy, dz, state.xth, state.yth, state.zth); // Transform linear increments from uav to gcs frame
+	}
 	state.x += dx;
 	state.y += dy;
 	state.z += dz;
 	if (dxth || dyth || dzth){
-		calc_rotations(dxth,dyth,dzth); // Add angular motion if needed
+		quat_rotate(state.x, state.y, state.z, dxth, dyth, dzth); // Add angular motion if needed
 	}
 	state.last_time = state.current_time;
 }
 
-// Calculate the XYZ positions for the 6-DOF state when there are rotations taking place
-// A quaternion rotation is performed for each axis
-// The convention used is Z-Y-X rotation, and the angles are Tait-Bryan "Euler" angles (aka RPY)
-void uav_odom::calc_rotations(double dxth, double dyth, double dzth){
+// Takes in references to XYZ coords and values of RPY, and perform a 3-axis quaternion rotation on the XYZ coords
+// The convention used is Z-Y-X rotation, and the rotation angles are Tait-Bryan "Euler" angles (aka RPY)
+void uav_odom::quat_rotate(double &x, double &y, double &z, double xth, double yth, double zth){
 	tf2::Quaternion quat_rot, quat_rot_conj, quat_result;
-	quat_result.setValue(state.x, state.y, state.z);
+	quat_result.setValue(x, y, z);
 	#ifdef DEBUG
 		ROS_INFO_STREAM("quad_old: " << quat_result.w() << ", " << quat_result.x() << ", " << quat_result.y() << ", " << quat_result.z());
 	#endif
-	if (dzth){ // First rotate around z...
-		quat_rot.setValue(0, 0, sin(dzth/2), cos(dzth/2));
+	if (zth){ // First rotate around z...
+		quat_rot.setValue(0, 0, sin(zth/2), cos(zth/2));
 		quat_rot_conj.setValue(-quat_rot.x(), -quat_rot.y(), -quat_rot.z(), quat_rot.w());
 		quat_result = quat_rot * quat_result * quat_rot_conj;
 	}
-	if (dyth){ /// Then y...
-		quat_rot.setValue(0, sin(dyth/2), 0, cos(dyth/2));
+	if (yth){ /// Then y...
+		quat_rot.setValue(0, sin(yth/2), 0, cos(yth/2));
 		quat_rot_conj.setValue(-quat_rot.x(), -quat_rot.y(), -quat_rot.z(), quat_rot.w());
 		quat_result = quat_rot * quat_result * quat_rot_conj;
 	}
-	if (dxth){ // And finally x
-		quat_rot.setValue(sin(dxth/2), 0, 0, cos(dxth/2));
+	if (xth){ // And finally x
+		quat_rot.setValue(sin(xth/2), 0, 0, cos(xth/2));
 		quat_rot_conj.setValue(-quat_rot.x(), -quat_rot.y(), -quat_rot.z(), quat_rot.w());
 		quat_result = quat_rot * quat_result * quat_rot_conj;
 	}
-	quat_result = quat_rot * quat_result * quat_rot_conj;
 	#ifdef DEBUG
 		ROS_INFO_STREAM("quad_new: " << quat_result.w() << ", " << quat_result.x() << ", " << quat_result.y() << ", " << quat_result.z());
 	#endif
-	state.x = quat_result.x();
-	state.y = quat_result.y();
-	state.z = quat_result.z();
+	x = quat_result.x(); //"Return" the transformed XYZ coords through pass-by-reference
+	y = quat_result.y();
+	z = quat_result.z();
 }
 
 // Update the ros transform message with data from tht 6-DOF state and quaternion

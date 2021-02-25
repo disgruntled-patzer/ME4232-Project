@@ -4,6 +4,7 @@
         <param name="base_link_id" type="string" value="1" />
         <param name="odom_frame_id" value="gcs" />
         <param name="imu_data_location" value="$(find me4232)/test/" />
+        <param name="filename" value="6" />
     <!-- </node> -->
 
 </launch>
