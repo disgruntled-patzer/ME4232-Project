@@ -12,8 +12,8 @@
 
 #include <fstream>
 #include <math.h>
+#include <random>
 #include <sstream>
-#include <stdlib.h>
 
 #include <ros/ros.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
@@ -44,6 +44,7 @@ class uav_odom{
 	
 	private:
 
+		// Odom and Transforms
 		tf2_ros::TransformBroadcaster odom_broadcaster;
 		tf2::Quaternion odom_quat;
 		geometry_msgs::TransformStamped odom_trans;
@@ -55,7 +56,9 @@ class uav_odom{
 		std::string imu_data_src; // Location of csv file containing imu data
 		std::fstream reader; // File reader
 		std::string line; // To read each line from the csv file
-	
+
+		std::random_device init_data; // Random number generator
+
 	public:
 
 		ros::NodeHandle n;
@@ -75,11 +78,11 @@ class uav_odom{
 
 // Initialise the 6-DOF state
 uav_odom::uav_odom(){
-	// Starting XYZ position is random
-	srand(time(0));
-	state.x = double(rand() % MAX_INITIAL_POS);
-	state.y = double(rand() % MAX_INITIAL_POS);
-	state.z = double(rand() % MAX_INITIAL_POS);
+	// Starting XYZ position is random (from 0 to MAX_INITIAL_POS)
+	std::uniform_real_distribution<double>dist(0.0, MAX_INITIAL_POS);
+	state.x = dist(init_data);
+	state.y = dist(init_data);
+	state.z = dist(init_data);
 	// All other starting values are zero
 	state.xth = state.yth = state.zth = 0.0;
 	state.vx = state.vy = state.vz = 0.0;
@@ -90,19 +93,20 @@ uav_odom::uav_odom(){
 // Randomly select and open a CSV trajectory file
 void uav_odom::access_imu_data(){
 	std::string uav_id, location;
-	n.getParam("base_link_id", uav_id);
+	uav_id = ros::this_node::getName();
 	n.getParam("imu_data_location", location); // Location to csv files
-	srand(time(0));
 	int filename;
 	std::stringstream ss;
 	#ifdef DEBUG
 		n.getParam("filename", filename);
 	#else
-		filename = rand() % MAX_TRAJ; // Filename is a random number from 0 to (MAX_TRAJ - 1)
+		// Filename is a random number from 0 to (MAX_TRAJ-1)
+		std::uniform_int_distribution<int>dist(0, MAX_TRAJ-1);
+		filename = dist(init_data);
 	#endif
 	ss << location << filename << ".csv"; // Assemble the full directory to the file
 	imu_data_src = ss.str();
-	ROS_INFO_STREAM("UAV " << uav_id << " opening file " << imu_data_src);
+	ROS_INFO_STREAM(uav_id << " opening file " << imu_data_src);
 	// Once filename is generated, open it
 	reader.open(imu_data_src, std::fstream::in);
 	if (!reader.is_open()){
@@ -128,12 +132,14 @@ void uav_odom::extract_imu_data(){
 		ss >> reading.v_zth;
 		ss.ignore();
 	#else // Generate random data between 0 - MAX_ACC (for accel) and 0 - MAX_ANG_VEL (for angular velocity)
-		reading.ax = (double)rand()/RAND_MAX*MAX_ACC;
-		reading.ay = (double)rand()/RAND_MAX*MAX_ACC;
-		reading.az = (double)rand()/RAND_MAX*MAX_ACC;
-		reading.v_xth = (double)rand()/RAND_MAX*MAX_ANG_VEL;
-		reading.v_yth = (double)rand()/RAND_MAX*MAX_ANG_VEL;
-		reading.v_zth = (double)rand()/RAND_MAX*MAX_ANG_VEL;
+		std::uniform_real_distribution<double>acc_dist(0.0, MAX_ACC);
+		reading.ax = acc_dist(init_data);
+		reading.ay = acc_dist(init_data);
+		reading.az = acc_dist(init_data);
+		std::uniform_real_distribution<double>ang_vel_dist(0.0, MAX_ANG_VEL);
+		reading.v_xth = ang_vel_dist(init_data);
+		reading.v_yth = ang_vel_dist(init_data);
+		reading.v_zth = ang_vel_dist(init_data);
 	#endif
 }
 
@@ -209,7 +215,7 @@ void uav_odom::quat_rotate(double &x, double &y, double &z, double xth, double y
 // Update the ros transform message with data from tht 6-DOF state and quaternion
 void uav_odom::update_ros_tf(){
 	n.getParam("odom_frame_id", odom_trans.header.frame_id);
-	n.getParam("base_link_id", odom_trans.child_frame_id);
+	odom_trans.child_frame_id = ros::this_node::getName();
 	odom_trans.header.stamp = state.current_time;
 	odom_trans.transform.translation.x = state.x;
 	odom_trans.transform.translation.y = state.y;
@@ -224,7 +230,7 @@ void uav_odom::update_ros_tf(){
 void uav_odom::update_ros_odom(){
 
 	n.getParam("odom_frame_id", odom.header.frame_id);
-	n.getParam("base_link_id", odom.child_frame_id);
+	odom.child_frame_id = ros::this_node::getName();
 	odom.header.stamp = state.current_time;
 
 	// Set the position
