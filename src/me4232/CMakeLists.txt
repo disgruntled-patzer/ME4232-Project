@@ -13,6 +13,7 @@ find_package(catkin REQUIRED COMPONENTS
   roscpp
   std_msgs
   tf
+  visualization_msgs
 )
 
 ## System dependencies are found with CMake's conventions
@@ -107,7 +108,7 @@ find_package(catkin REQUIRED COMPONENTS
 catkin_package(
 #  INCLUDE_DIRS include
 #  LIBRARIES me4232
-#  CATKIN_DEPENDS geometry_msgs nav_msgs roscpp std_msgs tf
+#  CATKIN_DEPENDS geometry_msgs nav_msgs roscpp std_msgs tf visualization_msgs
 #  DEPENDS system_lib
 )
 
@@ -138,9 +139,10 @@ include_directories(
 # add_executable(${PROJECT_NAME}_node src/me4232_node.cpp)
 add_executable(uav src/uav.cpp)
 target_link_libraries(uav ${catkin_LIBRARIES})
-
 add_executable(gcs src/gcs.cpp)
 target_link_libraries(gcs ${catkin_LIBRARIES})
+add_executable(me4232_rviz src/me4232_rviz.cpp)
+target_link_libraries(me4232_rviz ${catkin_LIBRARIES})
 
 ## Rename C++ executable without prefix
 ## The above recommended prefix causes long target names, the following renames the
