@@ -167,27 +167,27 @@ void uav_odom::compute_odom(){
 	state.xth += dxth;
 	state.yth += dyth;
 	state.zth += dzth;
-	// To calculate XYZ, first calculate linear motion, then add angular motion
-	double dx = state.vx*dt; // Add linear motion
+	// To calculate XYZ, first calculate linear increments then add angular increments if needed
+	double dx = state.vx*dt;
 	double dy = state.vy*dt;
 	double dz = state.vz*dt;
-	if (state.xth || state.yth || state.zth){
+	if (state.xth || state.yth || state.zth){ // Transform linear increments from uav to gcs frame
 		#ifdef QUAT
-			quat_rotate(dx, dy, dz, state.xth, state.yth, state.zth); // Transform linear increments from uav to gcs frame
+			quat_rotate(dx, dy, dz, state.xth, state.yth, state.zth);
 		#else
 			euler_rotate(dx, dy, dz, state.xth, state.yth, state.zth);
+		#endif
+	}
+	if (dxth || dyth || dzth){ // Rotate the linear increments by the angular increments
+		#ifdef QUAT
+			quat_rotate(dx, dy, dz, dxth, dyth, dzth);
+		#else
+			euler_rotate(dx, dy, dz, dxth, dyth, dzth);
 		#endif
 	}
 	state.x += dx;
 	state.y += dy;
 	state.z += dz;
-	if (dxth || dyth || dzth){ // TODO: Perform the rotation on the LOCAL orientation, not the global one
-		#ifdef QUAT
-			quat_rotate(state.x, state.y, state.z, dxth, dyth, dzth); // Add angular motion if needed
-		#else
-			euler_rotate(state.x, state.y, state.z, dxth, dyth, dzth);
-		#endif
-	}
 	state.last_time = state.current_time;
 }
 
@@ -228,7 +228,7 @@ void uav_odom::euler_rotate(double &x, double &y, double &z, double xth, double 
 	double rotate[3][3], start[3];
 	// Populate the rotation matrix
 	rotate[0][0] = cos(yth)*cos(zth);
-	rotate[0][1] = -cos(xth)*sin(zth) + sin(xth)*sin(yth)*sin(zth);
+	rotate[0][1] = -cos(xth)*sin(zth) + sin(xth)*sin(yth)*cos(zth);
 	rotate[0][2] = sin(xth)*sin(zth) + cos(xth)*sin(yth)*cos(zth);
 	rotate[1][0] = cos(yth)*sin(zth);
 	rotate[1][1] = cos(xth)*cos(zth) + sin(xth)*sin(yth)*sin(zth);
