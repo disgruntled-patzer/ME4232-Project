@@ -24,6 +24,7 @@
 #define MAX_INITIAL_POS 5 // Max possible value of starting XYZ coordinates
 #define MAX_ACC 1 // Max possible IMU acceleration
 #define MAX_ANG_VEL 0.5 // Max possible gyro angular velocity
+#define QUAT // Rotate using quaternions. If this macro is off, rotate using "Euler" angles
 // #define CSV // Get IMU/gyro data from a selected CSV file. If this macro is off, the IMU/gyro data is generated randomly
 // #define DEBUG
 
@@ -70,6 +71,7 @@ class uav_odom{
 		void extract_imu_data();
 		void compute_odom();
 		void quat_rotate(double &x, double &y, double &z, double xth, double yth, double zth);
+		void euler_rotate(double &x, double &y, double &z, double xth, double yth, double zth);
 		void update_ros_tf();
 		void update_ros_odom();
 		void log_odom();
@@ -170,13 +172,21 @@ void uav_odom::compute_odom(){
 	double dy = state.vy*dt;
 	double dz = state.vz*dt;
 	if (state.xth || state.yth || state.zth){
-		quat_rotate(dx, dy, dz, state.xth, state.yth, state.zth); // Transform linear increments from uav to gcs frame
+		#ifdef QUAT
+			quat_rotate(dx, dy, dz, state.xth, state.yth, state.zth); // Transform linear increments from uav to gcs frame
+		#else
+			euler_rotate(dx, dy, dz, state.xth, state.yth, state.zth);
+		#endif
 	}
 	state.x += dx;
 	state.y += dy;
 	state.z += dz;
-	if (dxth || dyth || dzth){
-		quat_rotate(state.x, state.y, state.z, dxth, dyth, dzth); // Add angular motion if needed
+	if (dxth || dyth || dzth){ // TODO: Perform the rotation on the LOCAL orientation, not the global one
+		#ifdef QUAT
+			quat_rotate(state.x, state.y, state.z, dxth, dyth, dzth); // Add angular motion if needed
+		#else
+			euler_rotate(state.x, state.y, state.z, dxth, dyth, dzth);
+		#endif
 	}
 	state.last_time = state.current_time;
 }
@@ -210,6 +220,30 @@ void uav_odom::quat_rotate(double &x, double &y, double &z, double xth, double y
 	x = quat_result.x(); //"Return" the transformed XYZ coords through pass-by-reference
 	y = quat_result.y();
 	z = quat_result.z();
+}
+
+// Takes in references to XYZ coords and values of RPY, and perform a 3-axis "Euler" angle rotation on the XYZ coords
+// The convention used is Z-Y-X rotation, and the rotation angles are Tait-Bryan "Euler" angles (aka RPY)
+void uav_odom::euler_rotate(double &x, double &y, double &z, double xth, double yth, double zth){
+	double rotate[3][3], start[3];
+	// Populate the rotation matrix
+	rotate[0][0] = cos(yth)*cos(zth);
+	rotate[0][1] = -cos(xth)*sin(zth) + sin(xth)*sin(yth)*sin(zth);
+	rotate[0][2] = sin(xth)*sin(zth) + cos(xth)*sin(yth)*cos(zth);
+	rotate[1][0] = cos(yth)*sin(zth);
+	rotate[1][1] = cos(xth)*cos(zth) + sin(xth)*sin(yth)*sin(zth);
+	rotate[1][2] = -sin(xth)*cos(zth) + cos(xth)*sin(yth)*sin(zth);
+	rotate[2][0] = -sin(yth);
+	rotate[2][1] = sin(xth)*cos(yth);
+	rotate[2][2] = cos(xth)*cos(yth);
+	// Populate the initial vector
+	start[0] = x;
+	start[1] = y;
+	start[2] = z;
+	// Do the rotation matrix multiplication and "return" the transformed XYZ coords through pass-by-reference
+	x = rotate[0][0]*start[0] + rotate[0][1]*start[1] + rotate[0][2]*start[2];
+	y = rotate[1][0]*start[0] + rotate[1][1]*start[1] + rotate[1][2]*start[2];
+	z = rotate[2][0]*start[0] + rotate[2][1]*start[1] + rotate[2][2]*start[2];
 }
 
 // Update the ros transform message with data from tht 6-DOF state and quaternion
