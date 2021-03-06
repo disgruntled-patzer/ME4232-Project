@@ -24,19 +24,20 @@
 #define MAX_INITIAL_POS 5 // Max possible value of starting XYZ coordinates
 #define MAX_ACC 1 // Max possible IMU acceleration
 #define MAX_ANG_VEL 0.5 // Max possible gyro angular velocity
-#define QUAT // Rotate using quaternions. If this macro is off, rotate using "Euler" angles
+// #define QUAT // Rotate using quaternions. If this macro is off, rotate using "Euler" angles
 // #define CSV // Get IMU/gyro data from a selected CSV file. If this macro is off, the IMU/gyro data is generated randomly
 // #define DEBUG
 
 // Describe Pos and Vel for a 6 DOF model (XYZ and RPY) at a certain timestep.
 // Units: m, m/s, rad, rad/s.
-// The linear positions are relative to the GCS, or 'odom' frame, all others relative to the UAV, or 'base_link' frame
+// The pose data is relative to the GCS, or 'odom' frame, twist is relative to the UAV, or 'base_link' frame
 typedef struct {
 	double x,y,z,xth,yth,zth,vx,vy,vz,v_xth,v_yth,v_zth;
 	ros::Time current_time, last_time;
 } six_dof;
 
 // Data that is returned from a typical IMU/Gyroscope sensor (linear accel and rotational speeds in 3D)
+// Note that the sensor data is in the UAV frame
 typedef struct {
 	double ax, ay, az, v_xth, v_yth, v_zth;
 } imu_data;
@@ -149,43 +150,43 @@ void uav_odom::extract_imu_data(){
 void uav_odom::compute_odom(){
 	state.current_time = ros::Time::now();
 	double dt = (state.current_time - state.last_time).toSec();
-	// RPY Rates
+	// RPY Rates. In uav frame
 	state.v_xth = reading.v_xth;
 	state.v_yth = reading.v_yth;
 	state.v_zth = reading.v_zth;
-	// XYZ Rates
+	// XYZ Rates. In uav frame
 	double dvx = reading.ax*dt;
 	double dvy = reading.ay*dt;
 	double dvz = reading.az*dt;
 	state.vx += dvx;
 	state.vy += dvy;
 	state.vz += dvz;
-	// RPY
+	// RPY. dxth/yth/zth are initially in uav frame, but the actual RPY is in gcs frame
 	double dxth = reading.v_xth*dt;
 	double dyth = reading.v_yth*dt;
 	double dzth = reading.v_zth*dt;
-	state.xth += dxth;
+	if (dxth || dyth || dzth){ // Transform angular increments from uav to gcs frame...
+		#ifdef QUAT
+			quat_rotate(dxth, dyth, dzth, state.xth, state.yth, state.zth);
+		#else
+			euler_rotate(dxth, dyth, dzth, state.xth, state.yth, state.zth);
+		#endif
+	}
+	state.xth += dxth; // ...then increment the RPY in the gcs frame
 	state.yth += dyth;
 	state.zth += dzth;
-	// To calculate XYZ, first calculate linear increments then add angular increments if needed
+	// XYZ. dx/y/z are initially in uav frame, but the actualy XYZ is in gcs frame
 	double dx = state.vx*dt;
 	double dy = state.vy*dt;
 	double dz = state.vz*dt;
-	if (state.xth || state.yth || state.zth){ // Transform linear increments from uav to gcs frame
+	if (state.xth || state.yth || state.zth){ // Transform linear increments from uav to gcs frame...
 		#ifdef QUAT
 			quat_rotate(dx, dy, dz, state.xth, state.yth, state.zth);
 		#else
 			euler_rotate(dx, dy, dz, state.xth, state.yth, state.zth);
 		#endif
 	}
-	if (dxth || dyth || dzth){ // Rotate the linear increments by the angular increments
-		#ifdef QUAT
-			quat_rotate(dx, dy, dz, dxth, dyth, dzth);
-		#else
-			euler_rotate(dx, dy, dz, dxth, dyth, dzth);
-		#endif
-	}
-	state.x += dx;
+	state.x += dx; // ...then increment the XYZ in the gcs frame
 	state.y += dy;
 	state.z += dz;
 	state.last_time = state.current_time;
@@ -193,6 +194,7 @@ void uav_odom::compute_odom(){
 
 // Takes in references to XYZ coords and values of RPY, and perform a 3-axis quaternion rotation on the XYZ coords
 // The convention used is Z-Y-X rotation, and the rotation angles are Tait-Bryan "Euler" angles (aka RPY)
+// @TODO: This function seems to be buggy but problem has not been identified yet
 void uav_odom::quat_rotate(double &x, double &y, double &z, double xth, double yth, double zth){
 	tf2::Quaternion quat_rot, quat_rot_conj, quat_result;
 	quat_result.setValue(x, y, z);
