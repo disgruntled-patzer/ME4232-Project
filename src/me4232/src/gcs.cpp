@@ -24,6 +24,8 @@ int main(int argc, char **argv){
     ros::init(argc, argv, "gcs");
 
     ros::NodeHandle n;
+//     ros::Subscriber sub = n.subscribe("uav/odom", 100, gcs_odo_callback);
+//     ros::spin();
     sub = n.subscribe("uav/odometry", 100, gcs_odo_callback);
     // tf_pub = n.advertise<geometry_msgs::TransformStamped>("uav/tf_stamped", 100);
     UAVObj a(1., 1.);

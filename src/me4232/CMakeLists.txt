@@ -8,12 +8,14 @@ project(me4232)
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
 ## is used, also find other catkin packages
 find_package(catkin REQUIRED COMPONENTS
+  geometry_msgs
   nav_msgs
   geometry_msgs
   roscpp
-  rospy
   tf2_ros
   std_msgs
+  tf
+  visualization_msgs
 )
 
 ## System dependencies are found with CMake's conventions
@@ -108,7 +110,7 @@ find_package(catkin REQUIRED COMPONENTS
 catkin_package(
   INCLUDE_DIRS include
   LIBRARIES ${PROJECT_NAME}
-  CATKIN_DEPENDS nav_msgs geometry_msgs roscpp rospy std_msgs tf2_ros
+  CATKIN_DEPENDS nav_msgs geometry_msgs roscpp std_msgs tf2_ros tf visualization_msgs
 #  DEPENDS system_lib
   DEPENDS Eigen
 )
@@ -153,16 +155,13 @@ target_link_libraries(
 )
 
 add_executable(uav src/uav.cpp)
-target_link_libraries(uav ${PROJECT_NAME} ${catkin_LIBRARIES})
+target_link_libraries(uav ${catkin_LIBRARIES})
+
+add_executable(me4232_rviz src/me4232_rviz.cpp)
+target_link_libraries(me4232_rviz ${catkin_LIBRARIES})
 
 add_executable(gcs src/gcs.cpp)
 target_link_libraries(gcs ${PROJECT_NAME} ${catkin_LIBRARIES})
-
-# add_executable(uav_obj src/uav_obj.cpp)
-# target_link_libraries(uav_obj ${catkin_LIBRARIES})
-
-# add_executable(quartic src/quartic.cpp)
-# target_link_libraries(quartic ${catkin_LIBRARIES})
 
 ## Rename C++ executable without prefix
 ## The above recommended prefix causes long target names, the following renames the
