@@ -10,7 +10,9 @@ project(me4232)
 find_package(catkin REQUIRED COMPONENTS
   geometry_msgs
   nav_msgs
+  geometry_msgs
   roscpp
+  tf2_ros
   std_msgs
   tf
   visualization_msgs
@@ -73,7 +75,7 @@ find_package(catkin REQUIRED COMPONENTS
 ## Generate added messages and services with any dependencies listed here
 # generate_messages(
 #   DEPENDENCIES
-#   nav_msgs#   std_msgs
+#   nav_msgs #std_msgs
 # )
 
 ################################################
@@ -106,10 +108,11 @@ find_package(catkin REQUIRED COMPONENTS
 ## CATKIN_DEPENDS: catkin_packages dependent projects also need
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
-#  INCLUDE_DIRS include
-#  LIBRARIES me4232
-#  CATKIN_DEPENDS geometry_msgs nav_msgs roscpp std_msgs tf visualization_msgs
+  INCLUDE_DIRS include
+  LIBRARIES ${PROJECT_NAME}
+  CATKIN_DEPENDS nav_msgs geometry_msgs roscpp std_msgs tf2_ros tf visualization_msgs
 #  DEPENDS system_lib
+  DEPENDS Eigen
 )
 
 ###########
@@ -119,30 +122,46 @@ catkin_package(
 ## Specify additional locations of header files
 ## Your package locations should be listed before other locations
 include_directories(
-# include
+  include
   ${catkin_INCLUDE_DIRS}
+  ${Eigen_INCLUDE_DIRS}
 )
+link_directories(
+  ${EIGEN3_LIBRARY_DIRS})
 
 ## Declare a C++ library
-# add_library(${PROJECT_NAME}
-#   src/${PROJECT_NAME}/me4232.cpp
-# )
+add_library(${PROJECT_NAME}
+  src/gcs.cpp
+  src/uav_obj.cpp
+  src/quartic.cpp
+  include/gcs.h
+  include/uav_obj.h
+  include/quartic.h
+)
 
 ## Add cmake target dependencies of the library
 ## as an example, code may need to be generated before libraries
 ## either from message generation or dynamic reconfigure
-# add_dependencies(${PROJECT_NAME} ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+add_dependencies(${PROJECT_NAME} ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 ## Declare a C++ executable
 ## With catkin_make all packages are built within a single CMake context
 ## The recommended prefix ensures that target names across packages don't collide
 # add_executable(${PROJECT_NAME}_node src/me4232_node.cpp)
+
+target_link_libraries(
+  ${PROJECT_NAME}
+  ${catkin_LIBRARIES}
+)
+
 add_executable(uav src/uav.cpp)
 target_link_libraries(uav ${catkin_LIBRARIES})
-add_executable(gcs src/gcs.cpp)
-target_link_libraries(gcs ${catkin_LIBRARIES})
+
 add_executable(me4232_rviz src/me4232_rviz.cpp)
 target_link_libraries(me4232_rviz ${catkin_LIBRARIES})
+
+add_executable(gcs src/gcs.cpp)
+target_link_libraries(gcs ${PROJECT_NAME} ${catkin_LIBRARIES})
 
 ## Rename C++ executable without prefix
 ## The above recommended prefix causes long target names, the following renames the
