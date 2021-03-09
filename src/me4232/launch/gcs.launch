@@ -1,0 +1,8 @@
+<launch>
+    
+    <arg name="log_output" default="screen" />
+    <arg name="odom_frame_id" default="gcs" />
+
+    <node name="gcs" pkg="me4232" type="gcs" output="$(arg log_output)"/>
+
+</launch>
