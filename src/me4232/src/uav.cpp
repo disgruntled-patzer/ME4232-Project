@@ -91,6 +91,11 @@ uav_odom::uav_odom(){
 	state.vx = state.vy = state.vz = 0.0;
 	state.v_xth = state.v_yth = state.v_zth = 0.0;
 	state.current_time = state.last_time = ros::Time::now();
+	// Get the child frame id (e.g. if node name is "uav1", child frame id will be "1")
+	std::string nodename;
+	nodename = ros::this_node::getName();
+	odom_trans.child_frame_id = nodename.back();
+	odom.child_frame_id = nodename.back();
 }
 
 // Randomly select and open a CSV trajectory file
@@ -251,7 +256,7 @@ void uav_odom::euler_rotate(double &x, double &y, double &z, double xth, double 
 // Update the ros transform message with data from tht 6-DOF state and quaternion
 void uav_odom::update_ros_tf(){
 	n.getParam("odom_frame_id", odom_trans.header.frame_id);
-	odom_trans.child_frame_id = ros::this_node::getName();
+	// odom_trans.child_frame_id = ros::this_node::getName();
 	odom_trans.header.stamp = state.current_time;
 	odom_trans.transform.translation.x = state.x;
 	odom_trans.transform.translation.y = state.y;
@@ -266,7 +271,7 @@ void uav_odom::update_ros_tf(){
 void uav_odom::update_ros_odom(){
 
 	n.getParam("odom_frame_id", odom.header.frame_id);
-	odom.child_frame_id = ros::this_node::getName();
+	// odom.child_frame_id = ros::this_node::getName();
 	odom.header.stamp = state.current_time;
 
 	// Set the position
