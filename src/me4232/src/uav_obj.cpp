@@ -1,66 +1,56 @@
 #include <uav_obj.h>
 
-UAVObj::UAVObj(double max_acc, double interval) //ros::NodeHandle& nh, 
+UAVObj::UAVObj(double x_max_acc_, double y_max_acc_, double z_max_acc_)
 {
-    interval_ = interval;
-    max_acc_ = max_acc;
+    // In vehicle body frame
+    x_max_acc = x_max_acc_;
+    y_max_acc = y_max_acc_;
+    z_max_acc = z_max_acc_;
 }
 
+// Create the 8 ellipses for the 8 possible acceleration directions
 void UAVObj::get_future(){
     tf2::Vector3 pose;
-    std::cout << odom.pose.pose.position.x << " " << odom.pose.pose.position.y << " " << odom.pose.pose.position.z << " " << std::endl;
     tf2::convert(odom.pose.pose.position, pose);
-    std::cout << odom.pose.pose.position.x << " " << odom.pose.pose.position.y << " " << odom.pose.pose.position.z << " " << std::endl;
-
     tf2::Quaternion quat;
     tf2::convert(odom.pose.pose.orientation, quat);
 
     tf2::Transform tf(quat, pose);
     eigen = tf_to_eigen(tf);
-    // std::cout << matrix << std::endl;
 
-    tf2::Vector3 twist;
-    tf2::convert(odom.twist.twist.linear, twist);
+    double x = odom.twist.twist.linear.x * INTERVAL;
+    double y = odom.twist.twist.linear.y * INTERVAL;
+    double z = odom.twist.twist.linear.z * INTERVAL;
+
+    Eigen::Matrix4d twist = Eigen::Matrix4d::Identity();
+    twist.block<3,1>(0,3) << x, y, z;
+    eigen = eigen * twist;
+
+    // tf2::Vector3 twist;
+    // tf2::convert(odom.twist.twist.linear, twist);
     
-    double max_x = get_future_pos(twist[0], MAX_ACC, INTERVAL);
-    double min_x = get_future_pos(twist[0], -MAX_ACC, INTERVAL);
-    double max_y = get_future_pos(twist[1], MAX_ACC, INTERVAL);
-    double min_y = get_future_pos(twist[1], -MAX_ACC, INTERVAL);
-    double max_z = get_future_pos(twist[2], MAX_ACC, INTERVAL);
-    double min_z = get_future_pos(twist[2], -MAX_ACC, INTERVAL);
+    // double max_x = get_future_pos(twist[0], MAX_ACC, INTERVAL);
+    // double min_x = get_future_pos(twist[0], -MAX_ACC, INTERVAL);
+    // double max_y = get_future_pos(twist[1], MAX_ACC, INTERVAL);
+    // double min_y = get_future_pos(twist[1], -MAX_ACC, INTERVAL);
+    // double max_z = get_future_pos(twist[2], MAX_ACC, INTERVAL);
+    // double min_z = get_future_pos(twist[2], -MAX_ACC, INTERVAL);
 
-    std::cout << "covariance " << std::endl << get_covariance(max_x, max_y, max_z) << std::endl;
-
-    std::cout << "eigen: " << std::endl << eigen << std::endl;
-
-    quad[0] = eigen.transpose() * get_covariance(max_x, max_y, max_z) * eigen;
-    quad[1] = eigen.transpose() * get_covariance(max_x, max_y, min_z) * eigen;
-    quad[2] = eigen.transpose() * get_covariance(max_x, min_y, max_z) * eigen;
-    quad[3] = eigen.transpose() * get_covariance(max_x, min_y, min_z) * eigen;
-    quad[4] = eigen.transpose() * get_covariance(min_x, max_y, max_z) * eigen;
-    quad[5] = eigen.transpose() * get_covariance(min_x, max_y, min_z) * eigen;
-    quad[6] = eigen.transpose() * get_covariance(min_x, min_y, max_z) * eigen;
-    quad[7] = eigen.transpose() * get_covariance(min_x, min_y, min_z) * eigen;
-    std::cout << "ece0: " << std::endl << quad[0] << std::endl;
-    std::cout << "ece4: " << std::endl << quad[4] << std::endl;
+    // quad[0] = eigen.transpose() * get_covariance(max_x, max_y, max_z) * eigen;
+    // quad[1] = eigen.transpose() * get_covariance(max_x, max_y, min_z) * eigen;
+    // quad[2] = eigen.transpose() * get_covariance(max_x, min_y, max_z) * eigen;
+    // quad[3] = eigen.transpose() * get_covariance(max_x, min_y, min_z) * eigen;
+    // quad[4] = eigen.transpose() * get_covariance(min_x, max_y, max_z) * eigen;
+    // quad[5] = eigen.transpose() * get_covariance(min_x, max_y, min_z) * eigen;
+    // quad[6] = eigen.transpose() * get_covariance(min_x, min_y, max_z) * eigen;
+    // quad[7] = eigen.transpose() * get_covariance(min_x, min_y, min_z) * eigen;
 }
 
+// Convert tf message to eigen matrix
 Eigen::Matrix4d tf_to_eigen(tf2::Transform tf){
     Eigen::Matrix4d eigen;
     tf2::Matrix3x3 basis = tf.getBasis();
     tf2::Vector3 origin = tf.getOrigin();
-    // std::cout << "basis" << std::endl;
-    // for (int i = 0; i < 3; i++){
-    //     for (int j = 0; j < 3; j++){
-    //         std::cout << basis[i][j] << " ";
-    //     }
-    //     std::cout << std::endl;
-    // }
-    // std::cout << "origin" << std::endl;
-    // for (int i = 0; i < 3; i++){
-    //     std::cout << origin[i] << " ";
-    // }
-    // std::cout << std::endl;
     eigen << basis[0][0], basis[0][1], basis[0][2], origin[0],
             basis[1][0], basis[1][1], basis[1][2], origin[1],
             basis[2][0], basis[2][1], basis[2][2], origin[2],
@@ -68,53 +58,49 @@ Eigen::Matrix4d tf_to_eigen(tf2::Transform tf){
     return eigen;
 }
 
+// Set the lastest odometry of the UAV
 void UAVObj::set_odom(nav_msgs::Odometry msg){
     odom = msg;
     get_future();
 }
 
+// Return bool of whether current UAV might collide with other UAV
 bool UAVObj::check_interference(UAVObj o){
-    Eigen::Vector3d vector(o.odom.pose.pose.position.x - odom.pose.pose.position.x,
-        o.odom.pose.pose.position.y - odom.pose.pose.position.y,
-        o.odom.pose.pose.position.z - odom.pose.pose.position.z);
+    Eigen::Vector3d vector(o.eigen(3,0) - eigen(3,0),
+        o.eigen(3,1) - eigen(3,1),
+        o.eigen(3,2) - eigen(3,2));
     vector.normalize();
-    std::cout << "vector " << vector << std::endl;
     //check self
-    std::cout << "self eigen " << std::endl << eigen << std::endl;
-    int idx = 0;
-    if (vector.dot(eigen.block<3,1>(0,0)) < 0){
-        idx += 4;
-    }
-    if (vector.dot(eigen.block<3,1>(0,1)) < 0){
-        idx += 2;
-    }
-    if (vector.dot(eigen.block<3,1>(0,2)) < 0){
-        idx += 1;
-    }
-    std::cout << "self index: " << idx << " self traj: " << std::endl << quad[idx] << std::endl;
-    Eigen::Matrix4d self_ellipse = quad[idx];
+    double x_acc = vector.dot(eigen.block<3,1>(0,0)) < 0 ? -x_max_acc : x_max_acc;
+    double a = get_future_pos(x_acc, INTERVAL);
+    double y_acc = vector.dot(eigen.block<3,1>(0,1)) < 0 ? -y_max_acc : y_max_acc;
+    double b = get_future_pos(y_acc, INTERVAL);
+    double z_acc = vector.dot(eigen.block<3,1>(0,2)) < 0 ? -z_max_acc : z_max_acc;
+    double c = get_future_pos(z_acc, INTERVAL);
+
+    // Eigen::Matrix4d eigen_inverse = eigen.inverse();
+    Eigen::Matrix4d self_ellipse = eigen.transpose() * get_covariance(a, b, c) * eigen;
+    // std::cout << "self " << self_ellipse << std::endl;
+
     //check other
-    idx = 0;
-    if (vector.dot(o.eigen.block<3,1>(0,0)) > 0){
-        idx += 4;
-    }
-    if (vector.dot(o.eigen.block<3,1>(0,1)) > 0){
-        idx += 2;
-    }
-    if (vector.dot(o.eigen.block<3,1>(0,2)) > 0){
-        idx += 1;
-    }
-    std::cout << "other index: " << idx << " other traj: " << std::endl << o.quad[idx] << std::endl;
-    Eigen::Matrix4d o_ellipse = o.quad[idx];
+    x_acc = vector.dot(o.eigen.block<3,1>(0,0)) > 0 ? -x_max_acc : x_max_acc;
+    a = get_future_pos(x_acc, INTERVAL);
+    y_acc = vector.dot(o.eigen.block<3,1>(0,1)) > 0 ? -y_max_acc : y_max_acc;
+    b = get_future_pos(y_acc, INTERVAL);
+    z_acc = vector.dot(o.eigen.block<3,1>(0,2)) > 0 ? -z_max_acc : z_max_acc;
+    c = get_future_pos(z_acc, INTERVAL);
+
+    // eigen_inverse = o.eigen.inverse();
+    Eigen::Matrix4d o_ellipse = o.eigen.transpose() * get_covariance(a, b, c) * o.eigen;
+    // std::cout << "other " << o_ellipse << std::endl;
     return intercept_ellipse(self_ellipse, o_ellipse);
 }
 
+// Return covariance matrix for ellipse based on the x, y, z lengths
 Eigen::Matrix4d get_covariance(double x, double y, double z){
-    Eigen::Matrix4d covariance;
+    Eigen::Matrix4d covariance = Eigen::Matrix4d::Zero(4, 4);
     covariance.block<3,3>(0,0) = Eigen::Vector3d(1/x/x, 1/y/y, 1/z/z).asDiagonal();
     covariance(3,3) = -1;
-    covariance.block<1,3>(3,0) << 0, 0, 0;
-    covariance.block<3,1>(0,3) << 0, 0, 0;
     return covariance;
 }
 
@@ -185,56 +171,26 @@ Eigen::Matrix4d get_covariance(double x, double y, double z){
 //     return lambda;
 // }
 
+// Check if 2 ellipses intersect
 bool intercept_ellipse(Eigen::Matrix4d a, Eigen::Matrix4d b){
     // double lambda = get_lambda(a, b);
     // std::cout << "lambda: " << lambda << std::endl;
-    // Eigen::Matrix4d x;
-    // x << 0.25, 0, 0, 0,
-    //     0, 1, 0, 0,
-    //     0, 0, 1, 0,
-    //     0, 0, 0, -1;
-    
-    // Eigen::Matrix4d y1;
-    // y1 << 1, 0, 0, 0,
-    //     0, 1, 0, 0,
-    //     0, 0, 1, 0,
-    //     -7, 0, 0, 1;
-    // Eigen::Matrix4d y2;
-    // y2 << 0.111, 0, 0, 0,
-    //     0, 0.25, 0, 0,
-    //     0, 0, 0.063, 0,
-    //     0, 0, 0, -1;
-    // Eigen::Matrix4d y = y1 * y2 * y1.transpose();
-    // double c = get_lambda(x, y);
-    // std::cout << "lambda: " << std::endl;
-    // std::cout << c << std::endl;
-    // std::cout << "x: " << std::endl;
-    // std::cout << x << std::endl;
-    // std::cout << "y: " << std::endl;
-    // std::cout << y << std::endl;
-    // std::cout << "lambda x - y: " << std::endl;
-    // std::cout << c * x - y << std::endl;
+
+    // std::cout << "a: " << std::endl << a << std::endl;
+    // std::cout << "b: " << std::endl << b << std::endl;
 
     Eigen::EigenSolver<Eigen::Matrix4d> es(a.inverse() * b);
-    std::cout << "es: " << es.eigenvalues() << " end es" << std::endl;
-    std::cout << "ev: " << es.eigenvectors() << " end ev" << std::endl;
-    std::complex<double> ev1 = es.eigenvalues()[0];
-    std::complex<double> ev2 = es.eigenvalues()[1];
-    if (es.eigenvalues()[0].imag() == 0){ // not intersect
-        return false;
+    for (int i = 0; i < 4; i++){
+        if (abs(es.eigenvalues()[i].imag()) > 1e-9){
+            // std::cout << "es: " << es.eigenvalues() << " end es" << std::endl;
+            // std::cout << "ev: " << es.eigenvectors() << " end ev" << std::endl;
+            return true;
+        }
     }
-
-    return true;
+    return false;
 }
 
-double get_future_pos(double vel, double acc, double time){
-    return vel*time + 0.5 * acc * time * time;
-}
-
-
-void test(Eigen::Vector3d e1_size, Eigen::Matrix4d e1_tf, Eigen::Vector3d e2_size, Eigen::Matrix4d e2_tf){
-    Eigen::Matrix3d m;
-    // m = AngleAxisf(angle1, Vector3d::UnitZ())
-    //     * AngleAxisf(angle2, Vector3d::UnitY())
-    //     * AngleAxisf(angle3, Vector3d::UnitX());
+// S = 1/2 at^2
+double get_future_pos(double acc, double time){
+    return 0.5 * acc * time * time;
 }

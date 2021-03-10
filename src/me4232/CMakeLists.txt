@@ -10,11 +10,9 @@ project(me4232)
 find_package(catkin REQUIRED COMPONENTS
   geometry_msgs
   nav_msgs
-  geometry_msgs
   roscpp
   tf2_ros
   std_msgs
-  tf
   visualization_msgs
 )
 
@@ -110,9 +108,8 @@ find_package(catkin REQUIRED COMPONENTS
 catkin_package(
   INCLUDE_DIRS include
   LIBRARIES ${PROJECT_NAME}
-  CATKIN_DEPENDS nav_msgs geometry_msgs roscpp std_msgs tf2_ros tf visualization_msgs
+  CATKIN_DEPENDS nav_msgs geometry_msgs roscpp std_msgs tf2_ros visualization_msgs
 #  DEPENDS system_lib
-  DEPENDS Eigen
 )
 
 ###########
@@ -124,10 +121,7 @@ catkin_package(
 include_directories(
   include
   ${catkin_INCLUDE_DIRS}
-  ${Eigen_INCLUDE_DIRS}
 )
-link_directories(
-  ${EIGEN3_LIBRARY_DIRS})
 
 ## Declare a C++ library
 add_library(${PROJECT_NAME}
