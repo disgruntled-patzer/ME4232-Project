@@ -20,12 +20,11 @@
 #include <tf2_ros/transform_broadcaster.h>
 #include <nav_msgs/Odometry.h>
 
-#define MAX_TRAJ 7 // Max number of CSV trajectory files
-#define MAX_INITIAL_POS 5 // Max possible value of starting XYZ coordinates
-#define MAX_ACC 1 // Max possible IMU acceleration
-#define MAX_ANG_VEL 0.5 // Max possible gyro angular velocity
+#define MAX_INITIAL_POS 5 // Max possible value of starting XYZ coordinates (for random generation mode)
+#define MAX_ACC 1 // Max possible IMU acceleration (for random generation mode)
+#define MAX_ANG_VEL 0.5 // Max possible gyro angular velocity (for random generation mode)
 // #define QUAT // Rotate using quaternions. If this macro is off, rotate using "Euler" angles
-// #define CSV // Get IMU/gyro data from a selected CSV file. If this macro is off, the IMU/gyro data is generated randomly
+#define CSV // CSV file mode (extract IMU data from CSV file). If macro is off, use random generation mode
 // #define DEBUG
 
 // Describe Pos and Vel for a 6 DOF model (XYZ and RPY) at a certain timestep.
@@ -54,12 +53,13 @@ class uav_odom{
 		six_dof state;
 		imu_data reading;
 
-		// CSV trajectory file handlers
-		std::string imu_data_src; // Location of csv file containing imu data
-		std::fstream reader; // File reader
-		std::string line; // To read each line from the csv file
-
-		std::random_device init_data; // Random number generator
+		#ifdef CSV
+			std::string imu_data_src; // Location of csv file containing imu data
+			std::fstream reader; // File reader
+			std::string line; // To read each line from the csv file
+		#else
+			std::random_device init_data; // Random number generator
+		#endif
 
 	public:
 
@@ -81,11 +81,19 @@ class uav_odom{
 
 // Initialise the 6-DOF state
 uav_odom::uav_odom(){
-	// Starting XYZ position is random (from 0 to MAX_INITIAL_POS)
-	std::uniform_real_distribution<double>dist(0.0, MAX_INITIAL_POS);
-	state.x = dist(init_data);
-	state.y = dist(init_data);
-	state.z = dist(init_data);
+	// Get starting XYZ pose
+	#ifdef CSV
+		// If in CSV file mode, starting XYZ pose will be obtained later from CSV file (in uav_odom::access_imu_data)
+		state.x = 0;
+		state.y = 0;
+		state.z = 0;
+	#else
+		// If in random generation mode, starting XYZ pose is random from 0 to MAX_INITIAL_POS
+		std::uniform_real_distribution<double>dist(0.0, MAX_INITIAL_POS);
+		state.x = dist(init_data);
+		state.y = dist(init_data);
+		state.z = dist(init_data);
+	#endif
 	// All other starting values are zero
 	state.xth = state.yth = state.zth = 0.0;
 	state.vx = state.vy = state.vz = 0.0;
@@ -98,29 +106,30 @@ uav_odom::uav_odom(){
 	odom.child_frame_id = nodename.back();
 }
 
-// Randomly select and open a CSV trajectory file
+// Open the CSV trajectory file if in CSV file mode
+// The file should be in location specified by rosparam "imu_data_location"
+// Filename should be the same as the UAV ID; e.g. for UAV 1, filename is "1.csv"
 void uav_odom::access_imu_data(){
-	std::string uav_id, location;
-	uav_id = ros::this_node::getName();
-	n.getParam("imu_data_location", location); // Location to csv files
-	int filename;
-	std::stringstream ss;
-	#ifdef DEBUG
-		n.getParam("filename", filename);
-	#else
-		// Filename is a random number from 0 to (MAX_TRAJ-1)
-		std::uniform_int_distribution<int>dist(0, MAX_TRAJ-1);
-		filename = dist(init_data);
+	#ifdef CSV
+		std::string location;
+		n.getParam("imu_data_location", location); // Location to csv files
+		std::stringstream ss;
+		ss << location << odom.child_frame_id << ".csv"; // Assemble the full directory to the file
+		imu_data_src = ss.str();
+		// Once filename is generated, open it
+		reader.open(imu_data_src, std::fstream::in);
+		if (!reader.is_open()){
+			throw std::runtime_error("UAV: Could not read IMU data");
+		}
+		// Read first line, which contains starting XYZ pose
+		std::getline(reader, line);
+		std::stringstream ss2(line);
+		ss2 >> state.x;
+		ss2.ignore();
+		ss2 >> state.y;
+		ss2.ignore();
+		ss2 >> state.z;
 	#endif
-	ss << location << filename << ".csv"; // Assemble the full directory to the file
-	imu_data_src = ss.str();
-	ROS_INFO_STREAM(uav_id << " opening file " << imu_data_src);
-	// Once filename is generated, open it
-	reader.open(imu_data_src, std::fstream::in);
-	if (!reader.is_open()){
-		throw std::runtime_error("UAV: Could not read IMU data");
-	}
-	std::getline(reader, line); // Read and discard first row (which contains headers)
 }
 
 // Extract IMU data and put into the 6-DOF state
@@ -338,7 +347,9 @@ void uav_odom::odom_manager(){
 		ros::spinOnce();
 		loop_rate.sleep();
 	}
-	reader.close();
+	#ifdef CSV
+		reader.close();
+	#endif
 }
 
 int main(int argc, char **argv){

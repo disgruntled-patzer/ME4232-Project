@@ -6,12 +6,10 @@
     <node name="uav1" pkg="me4232" type="uav" respawn="true" respawn_delay="3" output="$(arg log_output)" />
         <param name="odom_frame_id" value="$(arg odom_frame_id)" />
         <param name="imu_data_location" value="$(find me4232)/test/" />
-        <param name="filename" value="3" />
 
     <node name="uav2" pkg="me4232" type="uav" respawn="true" respawn_delay="3" output="$(arg log_output)" />
         <param name="odom_frame_id" value="$(arg odom_frame_id)" />
         <param name="imu_data_location" value="$(find me4232)/test/" />
-        <param name="filename" value="3" />
 
     <node name="me4232_rviz" pkg="me4232" type="me4232_rviz" respawn="true" respawn_delay="3" output="$(arg log_output)" />
         <param name="odom_frame_id" value="$(arg odom_frame_id)" />
