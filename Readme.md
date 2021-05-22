@@ -61,7 +61,7 @@ The following CSV example initialises the UAV at x = 1, y = 2, z = 2, then accle
 The following example initialises the UAV at x = 0, y = 0 and z = 0, acclerates the UAV forward in the x-direction for a certain amount of time, then continues at constant speed while pitching upwards (rotating about y axis) at 0.1rad/s
 
 ```
-1,2,2
+0,0,0
 1,0,0,0,0,0
 1,0,0,0,0,0
 1,0,0,0,0,0
